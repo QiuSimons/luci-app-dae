@@ -10,7 +10,7 @@ PKG_RELEASE:=1
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_PROTO:=git
-PKG_SOURCE_VERSION:=530e08d008b338718850cf173e8f82928fe79fb8
+PKG_SOURCE_VERSION:=593afbb5c10f128ce2088b0f5d8add9621435a73
 PKG_SOURCE_URL:=https://github.com/olicesx/dae.git
 PKG_MIRROR_HASH:=skip
 
@@ -87,6 +87,12 @@ endef
 define Build/Compile
 	( \
 		pushd $(PKG_BUILD_DIR) ; \
+        rm -rf $(PKG_BUILD_DIR)/../outbound ; \
+		rm -rf $(PKG_BUILD_DIR)/../quic-go ; \
+		git clone --depth=1 -b perf/complete-optimizations https://github.com/olicesx/outbound.git $(PKG_BUILD_DIR)/../outbound ; \
+		git clone --depth=1 -b main https://github.com/olicesx/quic-go.git $(PKG_BUILD_DIR)/../quic-go ; \
+		go mod edit -replace github.com/daeuniverse/outbound=../outbound ; \
+		go mod edit -replace github.com/daeuniverse/quic-go=../quic-go ; \
         go get -u=patch ; \
 		go mod tidy ; \
 		popd ; \
