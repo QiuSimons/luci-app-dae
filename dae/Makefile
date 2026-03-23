@@ -90,9 +90,7 @@ define Build/Compile
         rm -rf $(PKG_BUILD_DIR)/../outbound ; \
 		rm -rf $(PKG_BUILD_DIR)/../quic-go ; \
 		git clone --depth=1 -b perf/complete-optimizations https://github.com/olicesx/outbound.git $(PKG_BUILD_DIR)/../outbound ; \
-		git clone --depth=1 -b enhanced-with-fixes https://github.com/olicesx/quic-go.git $(PKG_BUILD_DIR)/../quic-go ; \
 		go mod edit -replace github.com/daeuniverse/outbound=../outbound ; \
-		go mod edit -replace github.com/daeuniverse/quic-go=../quic-go ; \
         go get -u=patch ; \
 		go mod tidy ; \
 		popd ; \
