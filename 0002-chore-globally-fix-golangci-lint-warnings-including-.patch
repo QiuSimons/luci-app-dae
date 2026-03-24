@@ -1,0 +1,1366 @@
+From 22d307bfe4645216c45320547106d64542f06380 Mon Sep 17 00:00:00 2001
+From: AI Builder Bot <bot@example.com>
+Date: Tue, 24 Mar 2026 14:37:06 +0800
+Subject: [PATCH] chore: globally fix golangci-lint warnings including
+ errcheck, govet, ineffassign, staticcheck and unused
+
+---
+ cmd/reload.go                                 |  4 +-
+ cmd/run.go                                    | 26 +++++-----
+ cmd/suspend.go                                |  2 +-
+ cmd/sysdump.go                                | 17 +++----
+ common/netutils/dnsconfig_unix.go             |  8 ---
+ common/subscription/subscription.go           |  1 -
+ component/dns/dns.go                          |  2 +-
+ component/dns/request_routing.go              |  1 -
+ component/dns/response_routing.go             |  1 -
+ component/outbound/dialer/alive_dialer_set.go | 10 ++--
+ .../outbound/dialer/connectivity_check.go     | 10 ++--
+ component/outbound/dialer/dialer.go           |  4 +-
+ component/outbound/dialer/utils.go            |  4 +-
+ .../ahocorasick_slimtrie_test.go              | 12 ++---
+ .../routing/domain_matcher/benchmark_test.go  | 12 ++---
+ .../routing/domain_matcher/go_regexp_nfa.go   |  4 +-
+ .../sniffing/internal/quicutils/cipher.go     |  5 +-
+ component/sniffing/quic_test.go               |  4 +-
+ component/sniffing/sniffer.go                 |  4 +-
+ component/sniffing/sniffing_bench_test.go     |  9 ++--
+ component/sniffing/tls.go                     |  8 +--
+ config/marshal.go                             |  2 -
+ config/parser.go                              |  4 +-
+ control/anyfrom_pool.go                       |  2 +-
+ control/bpf_utils.go                          |  8 ---
+ control/control_plane.go                      |  4 +-
+ control/control_plane_core.go                 | 51 ++++++-------------
+ control/dns.go                                | 23 +--------
+ control/dns_control.go                        | 19 ++-----
+ control/dns_pipelining_bench_test.go          |  6 +--
+ control/hash_utils.go                         |  5 --
+ control/netns_utils.go                        | 28 +++++-----
+ control/routing_matcher_builder.go            |  7 ++-
+ control/tcp.go                                |  8 +--
+ control/udp.go                                |  4 +-
+ control/utils.go                              |  2 +-
+ pkg/anybuffer/anybuffer.go                    |  1 -
+ pkg/config_parser/walker.go                   |  4 +-
+ pkg/geodata/decode.go                         |  4 +-
+ pkg/trie/trie_test.go                         | 16 +++---
+ trace/trace.go                                |  4 +-
+ 41 files changed, 129 insertions(+), 221 deletions(-)
+
+diff --git a/cmd/reload.go b/cmd/reload.go
+index 8f55f6f..83c00eb 100644
+--- a/cmd/reload.go
++++ b/cmd/reload.go
+@@ -49,7 +49,7 @@ var (
+ 			}
+ 			pid, err := strconv.Atoi(args[0])
+ 			if err != nil {
+-				cmd.Help()
++				_ = cmd.Help()
+ 				os.Exit(1)
+ 			}
+ 			if abort {
+@@ -65,7 +65,7 @@ var (
+ 				return
+ 			}
+ 			// Set the progress as ReloadSend.
+-			os.WriteFile(SignalProgressFilePath, []byte{consts.ReloadSend}, 0644)
++			_ = os.WriteFile(SignalProgressFilePath, []byte{consts.ReloadSend}, 0644)
+ 			// Send signal.
+ 			if err = syscall.Kill(pid, syscall.SIGUSR1); err != nil {
+ 				fmt.Println(err)
+diff --git a/cmd/run.go b/cmd/run.go
+index a25e897..e59d85d 100644
+--- a/cmd/run.go
++++ b/cmd/run.go
+@@ -138,24 +138,24 @@ func Run(log *logrus.Logger, conf *config.Config, externGeoDataDirs []string) (e
+ 	if conf.Global.PprofPort != 0 {
+ 		pprofAddr := fmt.Sprintf("localhost:%d", conf.Global.PprofPort)
+ 		pprofServer = &http.Server{Addr: pprofAddr, Handler: nil}
+-		go pprofServer.ListenAndServe()
++		go func() { _ = pprofServer.ListenAndServe() }()
+ 	}
+ 
+ 	// Serve tproxy TCP/UDP server util signals.
+ 	var listener *control.Listener
+ 	sigs := make(chan os.Signal, 1)
+-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGQUIT, syscall.SIGKILL, syscall.SIGILL, syscall.SIGUSR1, syscall.SIGUSR2)
++	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGQUIT, syscall.SIGILL, syscall.SIGUSR1, syscall.SIGUSR2)
+ 	go func() {
+ 		readyChan := make(chan bool, 1)
+ 		go func() {
+ 			<-readyChan
+-			sdnotify.Ready()
++			_ = sdnotify.Ready()
+ 			if !disablePidFile {
+ 				_ = os.WriteFile(PidFilePath, []byte(strconv.Itoa(os.Getpid())), 0644)
+ 			}
+ 			_ = os.WriteFile(SignalProgressFilePath, []byte{consts.ReloadDone}, 0644)
+ 		}()
+-		control.GetDaeNetns().With(func() error {
++		_ = control.GetDaeNetns().With(func() error {
+ 			if listener, err = c.ListenAndServe(readyChan, conf.Global.TproxyPort); err != nil {
+ 				log.Errorln("ListenAndServe:", err)
+ 			}
+@@ -187,7 +187,7 @@ loop:
+ 					sigs <- nil
+ 				}()
+ 				<-readyChan
+-				sdnotify.Ready()
++				_ = sdnotify.Ready()
+ 				if reloadingErr == nil {
+ 					_ = os.WriteFile(SignalProgressFilePath, append([]byte{consts.ReloadDone}, []byte("\nOK")...), 0644)
+ 				} else {
+@@ -208,7 +208,7 @@ loop:
+ 			} else {
+ 				log.Warnln("[Reload] Received reload signal; prepare to reload")
+ 			}
+-			sdnotify.Reloading()
++			_ = sdnotify.Reloading()
+ 			_ = os.WriteFile(SignalProgressFilePath, []byte{consts.ReloadProcessing}, 0644)
+ 			reloadingErr = nil
+ 
+@@ -223,7 +223,7 @@ loop:
+ 					log.WithFields(logrus.Fields{
+ 						"err": err,
+ 					}).Errorln("[Reload] Failed to reload")
+-					sdnotify.Ready()
++					_ = sdnotify.Ready()
+ 					_ = os.WriteFile(SignalProgressFilePath, append([]byte{consts.ReloadError}, []byte("\n"+err.Error())...), 0644)
+ 					continue
+ 				}
+@@ -238,7 +238,7 @@ loop:
+ 					log.WithFields(logrus.Fields{
+ 						"err": err,
+ 					}).Errorln("[Reload] Failed to reload")
+-					sdnotify.Ready()
++					_ = sdnotify.Ready()
+ 					_ = os.WriteFile(SignalProgressFilePath, append([]byte{consts.ReloadError}, []byte("\n"+err.Error())...), 0644)
+ 					continue
+ 				}
+@@ -274,8 +274,8 @@ loop:
+ 				// Load last config back.
+ 				newC, err = newControlPlane(log, obj, dnsCache, conf, externGeoDataDirs)
+ 				if err != nil {
+-					sdnotify.Stopping()
+-					obj.Close()
++					_ = sdnotify.Stopping()
++					_ = obj.Close()
+ 					c.Close()
+ 					log.WithFields(logrus.Fields{
+ 						"err": err,
+@@ -298,18 +298,18 @@ loop:
+ 
+ 			// Ready to close.
+ 			if abortConnections {
+-				oldC.AbortConnections()
++				_ = oldC.AbortConnections()
+ 			}
+ 			oldC.Close()
+ 
+ 			if pprofServer != nil {
+-				pprofServer.Shutdown(context.Background())
++				_ = pprofServer.Shutdown(context.Background())
+ 				pprofServer = nil
+ 			}
+ 			if newConf.Global.PprofPort != 0 {
+ 				pprofAddr := fmt.Sprintf("localhost:%d", conf.Global.PprofPort)
+ 				pprofServer = &http.Server{Addr: pprofAddr, Handler: nil}
+-				go pprofServer.ListenAndServe()
++				go func() { _ = pprofServer.ListenAndServe() }()
+ 			}
+ 		case syscall.SIGHUP:
+ 			// Ignore.
+diff --git a/cmd/suspend.go b/cmd/suspend.go
+index 3752ea0..37b2f67 100644
+--- a/cmd/suspend.go
++++ b/cmd/suspend.go
+@@ -32,7 +32,7 @@ var (
+ 			}
+ 			pid, err := strconv.Atoi(args[0])
+ 			if err != nil {
+-				cmd.Help()
++				_ = cmd.Help()
+ 				os.Exit(1)
+ 			}
+ 			if abort {
+diff --git a/cmd/sysdump.go b/cmd/sysdump.go
+index e7fca0f..e6a9834 100644
+--- a/cmd/sysdump.go
++++ b/cmd/sysdump.go
+@@ -8,7 +8,6 @@ package cmd
+ import (
+ 	"bytes"
+ 	"fmt"
+-	"io/ioutil"
+ 	"os"
+ 	"os/exec"
+ 	"path/filepath"
+@@ -33,7 +32,7 @@ var (
+ )
+ 
+ func dumpNetworkInfo() {
+-	tempDir, err := ioutil.TempDir("", "sysdump")
++	tempDir, err := os.MkdirTemp("", "sysdump")
+ 	if err != nil {
+ 		fmt.Printf("Failed to create temp directory: %v\n", err)
+ 		return
+@@ -203,7 +202,7 @@ func dumpRouting(outputDir string) {
+ 
+ 		buffer.WriteString(routeStr + "\n")
+ 	}
+-	err = ioutil.WriteFile(filepath.Join(outputDir, "routing.txt"), buffer.Bytes(), 0644)
++	err = os.WriteFile(filepath.Join(outputDir, "routing.txt"), buffer.Bytes(), 0644)
+ 	if err != nil {
+ 		fmt.Printf("Failed to write routing information to file: %v\n", err)
+ 	}
+@@ -226,7 +225,7 @@ func dumpNetInterfaces(outputDir string) {
+ 		}
+ 	}
+ 
+-	ioutil.WriteFile(filepath.Join(outputDir, "interfaces.txt"), buffer.Bytes(), 0644)
++	_ = os.WriteFile(filepath.Join(outputDir, "interfaces.txt"), buffer.Bytes(), 0644)
+ }
+ 
+ func dumpSysctl(outputDir string) {
+@@ -239,7 +238,7 @@ func dumpSysctl(outputDir string) {
+ 		}
+ 
+ 		if !info.IsDir() {
+-			value, err := ioutil.ReadFile(path)
++			value, err := os.ReadFile(path)
+ 			if err != nil {
+ 				fmt.Printf("Fail in filepath.Walk: %v\n", err)
+ 			}
+@@ -254,7 +253,7 @@ func dumpSysctl(outputDir string) {
+ 		fmt.Printf("Failed to get sysctl settings: %v\n", err)
+ 	}
+ 
+-	ioutil.WriteFile(filepath.Join(outputDir, "sysctl.txt"), buffer.Bytes(), 0644)
++	_ = os.WriteFile(filepath.Join(outputDir, "sysctl.txt"), buffer.Bytes(), 0644)
+ }
+ 
+ func dumpNetfilter(outputDir string) {
+@@ -265,7 +264,7 @@ func dumpNetfilter(outputDir string) {
+ 		return
+ 	}
+ 
+-	ioutil.WriteFile(filepath.Join(outputDir, "nftables.txt"), output, 0644)
++	_ = os.WriteFile(filepath.Join(outputDir, "nftables.txt"), output, 0644)
+ }
+ 
+ func dumpIPTables(outputDir string) {
+@@ -274,7 +273,7 @@ func dumpIPTables(outputDir string) {
+ 	if err != nil {
+ 		fmt.Printf("Failed to get iptables: %v\n", err)
+ 	} else {
+-		ioutil.WriteFile(filepath.Join(outputDir, "iptables.txt"), output, 0644)
++		_ = os.WriteFile(filepath.Join(outputDir, "iptables.txt"), output, 0644)
+ 	}
+ 
+ 	ip6tables := exec.Command("ip6tables-save", "-c")
+@@ -282,7 +281,7 @@ func dumpIPTables(outputDir string) {
+ 	if err != nil {
+ 		fmt.Printf("Failed to get ip6tables: %v\n", err)
+ 	} else {
+-		ioutil.WriteFile(filepath.Join(outputDir, "ip6tables.txt"), output, 0644)
++		_ = os.WriteFile(filepath.Join(outputDir, "ip6tables.txt"), output, 0644)
+ 	}
+ }
+ 
+diff --git a/common/netutils/dnsconfig_unix.go b/common/netutils/dnsconfig_unix.go
+index 9d6ecdb..7b98fe8 100644
+--- a/common/netutils/dnsconfig_unix.go
++++ b/common/netutils/dnsconfig_unix.go
+@@ -22,7 +22,6 @@ import (
+ 	"os"
+ 	"strconv"
+ 	"strings"
+-	"sync/atomic"
+ 	"time"
+ )
+ 
+@@ -42,7 +41,6 @@ type dnsConfig struct {
+ 	lookup        []string      // OpenBSD top-level database "lookup" order
+ 	err           error         // any error that occurs during open of resolv.conf
+ 	mtime         time.Time     // time of resolv.conf modification
+-	soffset       uint32        // used by serverOffset
+ 	singleRequest bool          // use sequential A and AAAA queries instead of parallel queries
+ 	useTCP        bool          // force usage of TCP for DNS resolutions
+ }
+@@ -170,12 +168,6 @@ func dnsReadConfig(filename string) *dnsConfig {
+ // indices of servers in c.servers when making queries.
+ // When the rotate option is enabled, this offset increases.
+ // Otherwise it is always 0.
+-func (c *dnsConfig) serverOffset() uint32 {
+-	if c.rotate {
+-		return atomic.AddUint32(&c.soffset, 1) - 1 // return 0 to start
+-	}
+-	return 0
+-}
+ 
+ func dnsDefaultSearch() []string {
+ 	hn, err := getHostname()
+diff --git a/common/subscription/subscription.go b/common/subscription/subscription.go
+index 6f76fcb..c730793 100644
+--- a/common/subscription/subscription.go
++++ b/common/subscription/subscription.go
+@@ -170,7 +170,6 @@ func ResolveSubscription(log *logrus.Logger, client *http.Client, configDir stri
+ 		}
+ 		persistToFile = true
+ 		subscription = strings.Replace(subscription, "-file", "", 1)
+-		break
+ 	default:
+ 	}
+ 	req, err = http.NewRequest("GET", subscription, nil)
+diff --git a/component/dns/dns.go b/component/dns/dns.go
+index 40da7c0..a21829c 100644
+--- a/component/dns/dns.go
++++ b/component/dns/dns.go
+@@ -119,7 +119,7 @@ func New(dns *config.Dns, opt *NewOption) (s *Dns, err error) {
+ 	}
+ 	if len(dns.Upstream) == 0 {
+ 		// Immediately ready.
+-		go opt.UpstreamReadyCallback(nil)
++		go func() { _ = opt.UpstreamReadyCallback(nil) }()
+ 	}
+ 	return s, nil
+ }
+diff --git a/component/dns/request_routing.go b/component/dns/request_routing.go
+index 11619f7..136d73c 100644
+--- a/component/dns/request_routing.go
++++ b/component/dns/request_routing.go
+@@ -21,7 +21,6 @@ type RequestMatcherBuilder struct {
+ 	log                *logrus.Logger
+ 	upstreamName2Id    map[string]uint8
+ 	simulatedDomainSet []routing.DomainSet
+-	fallback           *routing.Outbound
+ 	rules              []requestMatchSet
+ }
+ 
+diff --git a/component/dns/response_routing.go b/component/dns/response_routing.go
+index b0b9e3c..008c30d 100644
+--- a/component/dns/response_routing.go
++++ b/component/dns/response_routing.go
+@@ -24,7 +24,6 @@ type ResponseMatcherBuilder struct {
+ 	upstreamName2Id    map[string]uint8
+ 	simulatedDomainSet []routing.DomainSet
+ 	ipSet              []*trie.Trie
+-	fallback           *routing.Outbound
+ 	rules              []responseMatchSet
+ }
+ 
+diff --git a/component/outbound/dialer/alive_dialer_set.go b/component/outbound/dialer/alive_dialer_set.go
+index aab436b..46df080 100644
+--- a/component/outbound/dialer/alive_dialer_set.go
++++ b/component/outbound/dialer/alive_dialer_set.go
+@@ -113,7 +113,7 @@ func (a *AliveDialerSet) GetMinLatency() (d *Dialer, latency time.Duration) {
+ 
+ func (a *AliveDialerSet) printLatencies() {
+ 	var builder strings.Builder
+-	builder.WriteString(fmt.Sprintf("Group '%v' [%v]:\n", a.dialerGroupName, a.CheckTyp.String()))
++	fmt.Fprintf(&builder, "Group '%v' [%v]:\n", a.dialerGroupName, a.CheckTyp.String())
+ 	var alive []*struct {
+ 		d *Dialer
+ 		l time.Duration
+@@ -135,7 +135,7 @@ func (a *AliveDialerSet) printLatencies() {
+ 		return alive[i].l+alive[i].o < alive[j].l+alive[j].o
+ 	})
+ 	for i, dl := range alive {
+-		builder.WriteString(fmt.Sprintf("%4d. [%v] %v: %v\n", i+1, dl.d.property.SubscriptionTag, dl.d.property.Name, latencyString(dl.l, dl.o)))
++		fmt.Fprintf(&builder, "%4d. [%v] %v: %v\n", i+1, dl.d.property.SubscriptionTag, dl.d.property.Name, latencyString(dl.l, dl.o))
+ 	}
+ 	a.log.Infoln(strings.TrimSuffix(builder.String(), "\n"))
+ }
+@@ -166,9 +166,7 @@ func (a *AliveDialerSet) NotifyLatencyChange(dialer *Dialer, alive bool) {
+ 
+ 	if alive {
+ 		index := a.dialerToIndex[dialer]
+-		if index >= 0 {
+-			// This dialer is already alive.
+-		} else {
++		if index < 0 {
+ 			// Dialer: not alive -> alive.
+ 			if index == -NotAlive {
+ 				a.log.WithFields(logrus.Fields{
+@@ -205,8 +203,6 @@ func (a *AliveDialerSet) NotifyLatencyChange(dialer *Dialer, alive bool) {
+ 			}
+ 			// Pop the last element.
+ 			a.inorderedAliveDialerSet = a.inorderedAliveDialerSet[:len(a.inorderedAliveDialerSet)-1]
+-		} else {
+-			// This dialer is already not alive.
+ 		}
+ 	}
+ 
+diff --git a/component/outbound/dialer/connectivity_check.go b/component/outbound/dialer/connectivity_check.go
+index 0de30c7..1a6f1c2 100644
+--- a/component/outbound/dialer/connectivity_check.go
++++ b/component/outbound/dialer/connectivity_check.go
+@@ -226,13 +226,17 @@ type TcpCheckOptionRaw struct {
+ 	Method          string
+ }
+ 
++type contextKey int
++
++const loggerKey contextKey = 1
++
+ func (c *TcpCheckOptionRaw) Option() (opt *TcpCheckOption, err error) {
+ 	c.mu.Lock()
+ 	defer c.mu.Unlock()
+ 	if c.opt == nil {
+ 		ctx, cancel := context.WithTimeout(context.TODO(), Timeout)
+ 		defer cancel()
+-		ctx = context.WithValue(ctx, "logger", c.Log)
++		ctx = context.WithValue(ctx, loggerKey, c.Log)
+ 		tcpCheckOption, err := ParseTcpCheckOption(ctx, c.Raw, c.Method, c.ResolverNetwork)
+ 		if err != nil {
+ 			return nil, fmt.Errorf("failed to parse tcp_check_url: %w", err)
+@@ -273,7 +277,7 @@ type CheckOption struct {
+ func (d *Dialer) ActivateCheck() {
+ 	d.tickerMu.Lock()
+ 	defer d.tickerMu.Unlock()
+-	if d.InstanceOption.DisableCheck || d.checkActivated {
++	if d.DisableCheck || d.checkActivated {
+ 		return
+ 	}
+ 	d.checkActivated = true
+@@ -614,7 +618,7 @@ func (d *Dialer) HttpCheck(ctx context.Context, u *netutils.URL, ip netip.Addr,
+ 		Transport: &http.Transport{
+ 			DialContext: func(ctx context.Context, network, addr string) (c net.Conn, err error) {
+ 				// Force to dial "ip".
+-				conn, err := d.Dialer.DialContext(ctx, common.MagicNetwork("tcp", soMark, mptcp), net.JoinHostPort(ip.String(), u.Port()))
++				conn, err := d.DialContext(ctx, common.MagicNetwork("tcp", soMark, mptcp), net.JoinHostPort(ip.String(), u.Port()))
+ 				if err != nil {
+ 					return nil, err
+ 				}
+diff --git a/component/outbound/dialer/dialer.go b/component/outbound/dialer/dialer.go
+index f59bdfc..25af318 100644
+--- a/component/outbound/dialer/dialer.go
++++ b/component/outbound/dialer/dialer.go
+@@ -20,8 +20,8 @@ import (
+ )
+ 
+ var (
+-	UnexpectedFieldErr  = fmt.Errorf("unexpected field")
+-	InvalidParameterErr = fmt.Errorf("invalid parameters")
++	ErrUnexpectedField  = fmt.Errorf("unexpected field")
++	ErrInvalidParameter = fmt.Errorf("invalid parameters")
+ )
+ 
+ type Dialer struct {
+diff --git a/component/outbound/dialer/utils.go b/component/outbound/dialer/utils.go
+index 3e3883e..c920755 100644
+--- a/component/outbound/dialer/utils.go
++++ b/component/outbound/dialer/utils.go
+@@ -12,12 +12,12 @@ func showDuration(d time.Duration) string {
+ }
+ 
+ func latencyString(realLatency, latencyOffset time.Duration) string {
+-	var offsetSign string = "+"
++	offsetSign := "+"
+ 	if latencyOffset < 0 {
+ 		offsetSign = "-"
+ 	}
+ 
+-	var offsetPart string = ""
++	offsetPart := ""
+ 	if latencyOffset != 0 {
+ 		offsetPart = "(" + offsetSign + showDuration(latencyOffset.Abs()) + "=" + showDuration(realLatency+latencyOffset) + ")"
+ 	}
+diff --git a/component/routing/domain_matcher/ahocorasick_slimtrie_test.go b/component/routing/domain_matcher/ahocorasick_slimtrie_test.go
+index d525b61..b449f2b 100644
+--- a/component/routing/domain_matcher/ahocorasick_slimtrie_test.go
++++ b/component/routing/domain_matcher/ahocorasick_slimtrie_test.go
+@@ -38,20 +38,20 @@ func TestAhocorasickSlimtrie(t *testing.T) {
+ 		t.Fatal(err)
+ 	}
+ 
+-	rand.Seed(200)
++	r := rand.New(rand.NewSource(200))
+ 	for i := 0; i < 10000; i++ {
+-		sample := TestSample[rand.Intn(len(TestSample))]
+-		choice := rand.Intn(10)
++		sample := TestSample[r.Intn(len(TestSample))]
++		choice := r.Intn(10)
+ 		switch {
+ 		case choice < 4:
+-			addN := rand.Intn(5)
++			addN := r.Intn(5)
+ 			buf := make([]byte, addN)
+ 			for i := range buf {
+-				buf[i] = 'a' + byte(rand.Intn('z'-'a'))
++				buf[i] = 'a' + byte(r.Intn('z'-'a'))
+ 			}
+ 			sample = string(buf) + "." + sample
+ 		case choice >= 4 && choice < 6:
+-			k := rand.Intn(len(sample))
++			k := r.Intn(len(sample))
+ 			sample = sample[k:]
+ 		default:
+ 		}
+diff --git a/component/routing/domain_matcher/benchmark_test.go b/component/routing/domain_matcher/benchmark_test.go
+index c5dcf11..fc42f9d 100644
+--- a/component/routing/domain_matcher/benchmark_test.go
++++ b/component/routing/domain_matcher/benchmark_test.go
+@@ -224,20 +224,20 @@ func BenchmarkAhocorasickSlimtrie(b *testing.B) {
+ }
+ 
+ func runBenchmark(b *testing.B, matcher routing.DomainMatcher) {
+-	rand.Seed(100)
++	r := rand.New(rand.NewSource(100))
+ 	for i := 0; i < b.N; i++ {
+-		sample := TestSample[rand.Intn(len(TestSample))]
+-		choice := rand.Intn(10)
++		sample := TestSample[r.Intn(len(TestSample))]
++		choice := r.Intn(10)
+ 		switch {
+ 		case choice < 4:
+-			addN := rand.Intn(5)
++			addN := r.Intn(5)
+ 			buf := make([]byte, addN)
+ 			for i := range buf {
+-				buf[i] = 'a' + byte(rand.Intn('z'-'a'))
++				buf[i] = 'a' + byte(r.Intn('z'-'a'))
+ 			}
+ 			sample = string(buf) + "." + sample
+ 		case choice >= 4 && choice < 6:
+-			k := rand.Intn(len(sample))
++			k := r.Intn(len(sample))
+ 			sample = sample[k:]
+ 		default:
+ 		}
+diff --git a/component/routing/domain_matcher/go_regexp_nfa.go b/component/routing/domain_matcher/go_regexp_nfa.go
+index e017c3a..510bde5 100644
+--- a/component/routing/domain_matcher/go_regexp_nfa.go
++++ b/component/routing/domain_matcher/go_regexp_nfa.go
+@@ -40,9 +40,7 @@ func (n *GoRegexpNfa) AddSet(bitIndex int, patterns []string, typ consts.Routing
+ 			n.toBuild[bitIndex] = append(n.toBuild[bitIndex], "^"+d+"$")
+ 		}
+ 	case consts.RoutingDomainKey_Keyword:
+-		for _, d := range patterns {
+-			n.toBuild[bitIndex] = append(n.toBuild[bitIndex], d)
+-		}
++		n.toBuild[bitIndex] = append(n.toBuild[bitIndex], patterns...)
+ 	case consts.RoutingDomainKey_Regex:
+ 		for _, d := range patterns {
+ 			// Check if it is a valid regexp.
+diff --git a/component/sniffing/internal/quicutils/cipher.go b/component/sniffing/internal/quicutils/cipher.go
+index 0a06ef8..1c6a7c4 100644
+--- a/component/sniffing/internal/quicutils/cipher.go
++++ b/component/sniffing/internal/quicutils/cipher.go
+@@ -127,10 +127,7 @@ func (k *Keys) PayloadDecrypt(ciphertext []byte, packetNumber []byte, header []b
+ 		k.iv[len(k.iv)-len(packetNumber)+i] ^= packetNumber[i]
+ 	}
+ 	plaintext = make([]byte, len(ciphertext)-aead.Overhead())
+-	plaintext, err = aead.Open(plaintext[:0], k.iv, ciphertext, header)
+-	if err != nil {
+-		// Do nothing.
+-	}
++	plaintext, _ = aead.Open(plaintext[:0], k.iv, ciphertext, header)
+ 	return plaintext, nil
+ }
+ 
+diff --git a/component/sniffing/quic_test.go b/component/sniffing/quic_test.go
+index d5d4a4c..49be484 100644
+--- a/component/sniffing/quic_test.go
++++ b/component/sniffing/quic_test.go
+@@ -23,8 +23,8 @@ var QuicStream3, _ = hex.DecodeString("c00000000110787cb250e5ebaa3070534ac6f5680
+ func dumpCryptos(t *testing.T, cryptos []*quicutils.CryptoFrameOffset) {
+ 	var b strings.Builder
+ 	for _, c := range cryptos {
+-		b.WriteString(fmt.Sprintf("Offset %v; length: %v:\n", c.UpperAppOffset, len(c.Data)))
+-		b.WriteString(fmt.Sprintf("Dump:\n%v\n", hex.Dump(c.Data)))
++		fmt.Fprintf(&b, "Offset %v; length: %v:\n", c.UpperAppOffset, len(c.Data))
++		fmt.Fprintf(&b, "Dump:\n%v\n", hex.Dump(c.Data))
+ 	}
+ 	t.Log(b.String())
+ }
+diff --git a/component/sniffing/sniffer.go b/component/sniffing/sniffer.go
+index a1ec87f..84c0ad5 100644
+--- a/component/sniffing/sniffer.go
++++ b/component/sniffing/sniffer.go
+@@ -57,7 +57,7 @@ func NewStreamSniffer(r io.Reader, timeout time.Duration) *Sniffer {
+ 
+ func NewPacketSniffer(data []byte, timeout time.Duration) *Sniffer {
+ 	buffer := pool.GetBuffer()
+-	buffer.Write(data)
++	_, _ = buffer.Write(data)
+ 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+ 	s := &Sniffer{
+ 		stream:    false,
+@@ -188,7 +188,7 @@ func (s *Sniffer) SniffUdp() (d string, err error) {
+ func (s *Sniffer) AppendData(data []byte) {
+ 	s.needMore = false
+ 	ori := s.buf.Len()
+-	s.buf.Write(data)
++	_, _ = s.buf.Write(data)
+ 	s.data = append(s.data, s.buf.Bytes()[ori:])
+ }
+ 
+diff --git a/component/sniffing/sniffing_bench_test.go b/component/sniffing/sniffing_bench_test.go
+index 1898bcf..b352279 100644
+--- a/component/sniffing/sniffing_bench_test.go
++++ b/component/sniffing/sniffing_bench_test.go
+@@ -6,7 +6,6 @@
+ package sniffing
+ 
+ import (
+-	"fmt"
+ 	"testing"
+ 
+ 	"github.com/daeuniverse/dae/common"
+@@ -29,10 +28,10 @@ func init() {
+ func BenchmarkStringSet(b *testing.B) {
+ 	for i := 0; i < b.N; i++ {
+ 		var test [5]byte
+-		fastrand.Read(test[:])
++		_, _ = fastrand.Read(test[:])
+ 		_, ok := httpMethodSet[string(test[:])]
+ 		if !ok {
+-			fmt.Sprintf("%v", string(test[:]))
++			_ = string(test[:])
+ 		}
+ 	}
+ }
+@@ -40,9 +39,9 @@ func BenchmarkStringSet(b *testing.B) {
+ func BenchmarkStringSwitch(b *testing.B) {
+ 	for i := 0; i < b.N; i++ {
+ 		var test [5]byte
+-		fastrand.Read(test[:])
++		_, _ = fastrand.Read(test[:])
+ 		if !common.IsValidHttpMethod(string(test[:])) {
+-			fmt.Sprintf("%v", string(test[:]))
++			_ = string(test[:])
+ 		}
+ 	}
+ }
+diff --git a/component/sniffing/tls.go b/component/sniffing/tls.go
+index 9d0d353..49bbc04 100644
+--- a/component/sniffing/tls.go
++++ b/component/sniffing/tls.go
+@@ -80,7 +80,7 @@ func extractSniFromTls(search quicutils.Locator) (sni string, err error) {
+ 		return "", err
+ 	}
+ 	boundary += int(sessionIdLength) + 2 // +2 because the next field has 2B length
+-	if search.Len() < boundary || search.Len() < boundary {
++	if search.Len() < boundary {
+ 		return "", ErrNotApplicable
+ 	}
+ 
+@@ -90,7 +90,7 @@ func extractSniFromTls(search quicutils.Locator) (sni string, err error) {
+ 	}
+ 	cipherSuiteLength := int(binary.BigEndian.Uint16(b))
+ 	boundary += int(cipherSuiteLength) + 1 // +1 because the next field has 1B length
+-	if search.Len() < boundary || search.Len() < boundary {
++	if search.Len() < boundary {
+ 		return "", ErrNotApplicable
+ 	}
+ 
+@@ -99,7 +99,7 @@ func extractSniFromTls(search quicutils.Locator) (sni string, err error) {
+ 		return "", err
+ 	}
+ 	boundary += int(compressMethodsLength) + 2 // +2 because the next field has 2B length
+-	if search.Len() < boundary || search.Len() < boundary {
++	if search.Len() < boundary {
+ 		return "", ErrNotApplicable
+ 	}
+ 
+@@ -109,7 +109,7 @@ func extractSniFromTls(search quicutils.Locator) (sni string, err error) {
+ 	}
+ 	extensionsLength := int(binary.BigEndian.Uint16(b))
+ 	boundary += extensionsLength + 0 // +0 because our search ends
+-	if search.Len() < boundary || search.Len() < boundary {
++	if search.Len() < boundary {
+ 		return "", ErrNotApplicable
+ 	}
+ 	// Search SNI
+diff --git a/config/marshal.go b/config/marshal.go
+index 7002a28..6cb19ec 100644
+--- a/config/marshal.go
++++ b/config/marshal.go
+@@ -132,8 +132,6 @@ func (m *Marshaller) MarshalSection(name string, from reflect.Value, depth int)
+ 		goto unsupported
+ 	}
+ 
+-	panic("code should not reach here")
+-
+ unsupported:
+ 	return fmt.Errorf("unsupported section type %v", from.Type())
+ }
+diff --git a/config/parser.go b/config/parser.go
+index aa98277..5fe1f3b 100644
+--- a/config/parser.go
++++ b/config/parser.go
+@@ -20,7 +20,7 @@ func StringListParser(to reflect.Value, section *config_parser.Section) error {
+ 	}
+ 	to = to.Elem()
+ 	if to.Type() != reflect.TypeOf([]string{}) &&
+-		!(to.Kind() == reflect.Slice && to.Type().Elem().Kind() == reflect.String) {
++		(to.Kind() != reflect.Slice || to.Type().Elem().Kind() != reflect.String) {
+ 		return fmt.Errorf("StringListParser can only unmarshal section to *[]string")
+ 	}
+ 	for _, item := range section.Items {
+@@ -260,8 +260,6 @@ func SectionParser(to reflect.Value, section *config_parser.Section) error {
+ 		goto unsupported
+ 	}
+ 
+-	panic("code should not reach here")
+-
+ unsupported:
+ 	return fmt.Errorf("unsupported section type %v", to.Type())
+ }
+diff --git a/control/anyfrom_pool.go b/control/anyfrom_pool.go
+index 5bf488d..e98ba32 100644
+--- a/control/anyfrom_pool.go
++++ b/control/anyfrom_pool.go
+@@ -221,7 +221,7 @@ func (p *AnyfromPool) GetOrCreate(lAddr netip.AddrPort, ttl time.Duration) (conn
+ 		}
+ 		var err error
+ 		var pc net.PacketConn
+-		GetDaeNetns().With(func() error {
++		_ = GetDaeNetns().With(func() error {
+ 			pc, err = d.ListenPacket(context.Background(), "udp", lAddr.String())
+ 			return nil
+ 		})
+diff --git a/control/bpf_utils.go b/control/bpf_utils.go
+index d2c64a1..cf1eba9 100644
+--- a/control/bpf_utils.go
++++ b/control/bpf_utils.go
+@@ -24,14 +24,6 @@ import (
+ 	"github.com/sirupsen/logrus"
+ )
+ 
+-type _bpfTuples struct {
+-	Sip     [4]uint32
+-	Dip     [4]uint32
+-	Sport   uint16
+-	Dport   uint16
+-	L4proto uint8
+-	_       [3]byte
+-}
+ 
+ // The following BPF types are auto-generated by bpf2go in bpf_bpfel.go:
+ // - bpfTuplesKey (corresponds to struct tuples_key in tproxy.c, used as key for RoutingTuplesMap)
+diff --git a/control/control_plane.go b/control/control_plane.go
+index a8aa1a6..abae2c2 100644
+--- a/control/control_plane.go
++++ b/control/control_plane.go
+@@ -222,8 +222,8 @@ func NewControlPlane(
+ 	}
+ 	var bpf *bpfObjects
+ 	if _bpf != nil {
+-		if _bpf, ok := _bpf.(*bpfObjects); ok {
+-			bpf = _bpf
++		if v, ok := _bpf.(*bpfObjects); ok {
++			bpf = v
+ 		} else {
+ 			return nil, fmt.Errorf("unexpected bpf type: %T", _bpf)
+ 		}
+diff --git a/control/control_plane_core.go b/control/control_plane_core.go
+index a936ec7..d5d8cbc 100644
+--- a/control/control_plane_core.go
++++ b/control/control_plane_core.go
+@@ -187,26 +187,6 @@ func (c *controlPlaneCore) addQdisc(ifname string) error {
+ 	return nil
+ }
+ 
+-func (c *controlPlaneCore) delQdisc(ifname string) error {
+-	link, err := netlink.LinkByName(ifname)
+-	if err != nil {
+-		return err
+-	}
+-	qdisc := &netlink.GenericQdisc{
+-		QdiscAttrs: netlink.QdiscAttrs{
+-			LinkIndex: link.Attrs().Index,
+-			Handle:    netlink.MakeHandle(0xffff, 0),
+-			Parent:    netlink.HANDLE_CLSACT,
+-		},
+-		QdiscType: "clsact",
+-	}
+-	if err := netlink.QdiscDel(qdisc); err != nil {
+-		if !os.IsExist(err) {
+-			return fmt.Errorf("cannot add clsact qdisc: %w", err)
+-		}
+-	}
+-	return nil
+-}
+ 
+ // bindLan automatically configures kernel parameters and bind to lan interface `ifname`.
+ // bindLan supports lazy-bind if interface `ifname` is not found.
+@@ -293,10 +273,10 @@ func (c *controlPlaneCore) _bindLan(ifname string) error {
+ 		DirectAction: true,
+ 	}
+ 	if linkHdrLen > 0 {
+-		filterIngress.Fd = c.bpf.bpfPrograms.TproxyLanIngressL2.FD()
++		filterIngress.Fd = c.bpf.TproxyLanIngressL2.FD()
+ 		filterIngress.Name = filterIngress.Name + "_l2"
+ 	} else {
+-		filterIngress.Fd = c.bpf.bpfPrograms.TproxyLanIngressL3.FD()
++		filterIngress.Fd = c.bpf.TproxyLanIngressL3.FD()
+ 		filterIngress.Name = filterIngress.Name + "_l3"
+ 	}
+ 	// Remove and add.
+@@ -332,10 +312,10 @@ func (c *controlPlaneCore) _bindLan(ifname string) error {
+ 		DirectAction: true,
+ 	}
+ 	if linkHdrLen > 0 {
+-		filterEgress.Fd = c.bpf.bpfPrograms.TproxyLanEgressL2.FD()
++		filterEgress.Fd = c.bpf.TproxyLanEgressL2.FD()
+ 		filterEgress.Name = filterEgress.Name + "_l2"
+ 	} else {
+-		filterEgress.Fd = c.bpf.bpfPrograms.TproxyLanEgressL3.FD()
++		filterEgress.Fd = c.bpf.TproxyLanEgressL3.FD()
+ 		filterEgress.Name = filterEgress.Name + "_l3"
+ 	}
+ 	// Remove and add.
+@@ -479,10 +459,10 @@ func (c *controlPlaneCore) _bindWan(ifname string) error {
+ 		DirectAction: true,
+ 	}
+ 	if linkHdrLen > 0 {
+-		filterEgress.Fd = c.bpf.bpfPrograms.TproxyWanEgressL2.FD()
++		filterEgress.Fd = c.bpf.TproxyWanEgressL2.FD()
+ 		filterEgress.Name = filterEgress.Name + "_l2"
+ 	} else {
+-		filterEgress.Fd = c.bpf.bpfPrograms.TproxyWanEgressL3.FD()
++		filterEgress.Fd = c.bpf.TproxyWanEgressL3.FD()
+ 		filterEgress.Name = filterEgress.Name + "_l3"
+ 	}
+ 	// Best effort to remove old filter; it may not exist.
+@@ -517,10 +497,10 @@ func (c *controlPlaneCore) _bindWan(ifname string) error {
+ 		DirectAction: true,
+ 	}
+ 	if linkHdrLen > 0 {
+-		filterIngress.Fd = c.bpf.bpfPrograms.TproxyWanIngressL2.FD()
++		filterIngress.Fd = c.bpf.TproxyWanIngressL2.FD()
+ 		filterIngress.Name = filterIngress.Name + "_l2"
+ 	} else {
+-		filterIngress.Fd = c.bpf.bpfPrograms.TproxyWanIngressL3.FD()
++		filterIngress.Fd = c.bpf.TproxyWanIngressL3.FD()
+ 		filterIngress.Name = filterIngress.Name + "_l3"
+ 	}
+ 	// Best effort to remove old filter; it may not exist.
+@@ -550,7 +530,7 @@ func (c *controlPlaneCore) bindDaens() (err error) {
+ 	daens := GetDaeNetns()
+ 
+ 	// tproxy_dae0peer_ingress@eth0 at dae netns
+-	daens.With(func() error {
++	_ = daens.With(func() error {
+ 		return c.addQdisc(daens.Dae0Peer().Attrs().Name)
+ 	})
+ 	filterDae0peerIngress := &netlink.BpfFilter{
+@@ -561,11 +541,11 @@ func (c *controlPlaneCore) bindDaens() (err error) {
+ 			Protocol:  unix.ETH_P_ALL,
+ 			Priority:  0,
+ 		},
+-		Fd:           c.bpf.bpfPrograms.TproxyDae0peerIngress.FD(),
++		Fd:           c.bpf.TproxyDae0peerIngress.FD(),
+ 		Name:         consts.AppName + "_dae0peer_ingress",
+ 		DirectAction: true,
+ 	}
+-	daens.With(func() error {
++	_ = daens.With(func() error {
+ 		return netlink.FilterDel(filterDae0peerIngress)
+ 	})
+ 	// Remove and add.
+@@ -573,7 +553,7 @@ func (c *controlPlaneCore) bindDaens() (err error) {
+ 		// Clean up thoroughly.
+ 		filterIngressFlipped := deepcopy.Copy(filterDae0peerIngress).(*netlink.BpfFilter)
+ 		filterIngressFlipped.FilterAttrs.Handle ^= 1
+-		daens.With(func() error {
++		_ = daens.With(func() error {
+ 			return netlink.FilterDel(filterDae0peerIngress)
+ 		})
+ 	}
+@@ -583,7 +563,7 @@ func (c *controlPlaneCore) bindDaens() (err error) {
+ 		return fmt.Errorf("cannot attach ebpf object to filter ingress: %w", err)
+ 	}
+ 	c.deferFuncs = append(c.deferFuncs, func() error {
+-		daens.With(func() error {
++		_ = daens.With(func() error {
+ 			return netlink.FilterDel(filterDae0peerIngress)
+ 		})
+ 		return nil
+@@ -591,7 +571,7 @@ func (c *controlPlaneCore) bindDaens() (err error) {
+ 
+ 	// tproxy_dae0_ingress@dae0 at host netns
+ 	// Best effort to add qdisc; it may already exist.
+-	c.addQdisc(daens.Dae0().Attrs().Name)
++	_ = c.addQdisc(daens.Dae0().Attrs().Name)
+ 	filterDae0Ingress := &netlink.BpfFilter{
+ 		FilterAttrs: netlink.FilterAttrs{
+ 			LinkIndex: daens.Dae0().Attrs().Index,
+@@ -600,7 +580,7 @@ func (c *controlPlaneCore) bindDaens() (err error) {
+ 			Protocol:  unix.ETH_P_ALL,
+ 			Priority:  0,
+ 		},
+-		Fd:           c.bpf.bpfPrograms.TproxyDae0Ingress.FD(),
++		Fd:           c.bpf.TproxyDae0Ingress.FD(),
+ 		Name:         consts.AppName + "_dae0_ingress",
+ 		DirectAction: true,
+ 	}
+@@ -725,5 +705,4 @@ func (c *controlPlaneCore) InjectBpf(bpf *bpfObjects) {
+ 		c.bpfEjected = false
+ 		c.deferFuncs = append([]func() error{bpf.Close}, c.deferFuncs...)
+ 	}
+-	return
+ }
+diff --git a/control/dns.go b/control/dns.go
+index ba94481..838606a 100644
+--- a/control/dns.go
++++ b/control/dns.go
+@@ -140,26 +140,7 @@ func (b *idBitmap) Release(id uint16) {
+ 	}
+ }
+ 
+-// channelPool is a pool of channels for DNS response routing.
+-// This reduces allocations in the hot path.
+-var channelPool = sync.Pool{
+-	New: func() interface{} {
+-		return make(chan *dnsmessage.Msg, 1)
+-	},
+-}
+-
+-func getResponseChannel() chan *dnsmessage.Msg {
+-	return channelPool.Get().(chan *dnsmessage.Msg)
+-}
+ 
+-func putResponseChannel(ch chan *dnsmessage.Msg) {
+-	// Drain the channel before returning to pool
+-	select {
+-	case <-ch:
+-	default:
+-	}
+-	channelPool.Put(ch)
+-}
+ 
+ type DnsForwarder interface {
+ 	ForwardDNS(ctx context.Context, data []byte) (*dnsmessage.Msg, error)
+@@ -261,8 +242,8 @@ func (d *DoH) getHttpRoundTripper() *http.Transport {
+ 	return &httpTransport
+ }
+ 
+-func (d *DoH) getHttp3RoundTripper() *http3.RoundTripper {
+-	roundTripper := &http3.RoundTripper{
++func (d *DoH) getHttp3RoundTripper() *http3.Transport {
++	roundTripper := &http3.Transport{
+ 		TLSClientConfig: &tls.Config{
+ 			ServerName:         d.Upstream.Hostname,
+ 			NextProtos:         []string{"h3"},
+diff --git a/control/dns_control.go b/control/dns_control.go
+index e766ab9..d0c1034 100644
+--- a/control/dns_control.go
++++ b/control/dns_control.go
+@@ -994,14 +994,6 @@ func (c *DnsController) handleWithResponseWriterInternal(dnsMessage *dnsmessage.
+ 	}
+ }
+ 
+-func (c *DnsController) handle_(
+-	dnsMessage *dnsmessage.Msg,
+-	req *udpRequest,
+-	needResp bool,
+-) (err error) {
+-	return c.handleWithResponseWriter_(dnsMessage, req, needResp, nil)
+-}
+-
+ func (c *DnsController) handleWithResponseWriter_(
+ 	dnsMessage *dnsmessage.Msg,
+ 	req *udpRequest,
+@@ -1073,11 +1065,6 @@ func (c *DnsController) handleWithResponseWriter_(
+ 	return c.dialSend(0, req, data, dnsMessage.Id, upstream, needResp, responseWriter)
+ }
+ 
+-// sendReject_ send empty answer.
+-func (c *DnsController) sendReject_(dnsMessage *dnsmessage.Msg, req *udpRequest) (err error) {
+-	return c.sendRejectWithResponseWriter_(dnsMessage, req, nil)
+-}
+-
+ func (c *DnsController) writeCachedResponse(resp []byte, req *udpRequest, responseWriter dnsmessage.ResponseWriter) error {
+ 	if responseWriter != nil {
+ 		var respMsg dnsmessage.Msg
+@@ -1181,19 +1168,19 @@ func (c *DnsController) dialSend(invokingDepth int, req *udpRequest, data []byte
+ 	}
+ 
+ 	// Select best dial arguments (outbound, dialer, l4proto, ipversion, etc.)
+-	dialArgument, err := c.bestDialerChooser(req, upstream)
++	dialArg, err := c.bestDialerChooser(req, upstream)
+ 	if err != nil {
+ 		return err
+ 	}
+ 
+ 	// Dial and send.
+ 	var respMsg *dnsmessage.Msg
+-	usedDialArgument := dialArgument
++	var usedDialArgument *dialArgument
+ 
+ 	ctxDial, cancel := context.WithTimeout(context.TODO(), consts.DefaultDialTimeout)
+ 	defer cancel()
+ 
+-	respMsg, usedDialArgument, err = c.forwardWithFallback(ctxDial, req, upstream, dialArgument, data)
++	respMsg, usedDialArgument, err = c.forwardWithFallback(ctxDial, req, upstream, dialArg, data)
+ 	if err != nil {
+ 		return err
+ 	}
+diff --git a/control/dns_pipelining_bench_test.go b/control/dns_pipelining_bench_test.go
+index c4ab007..c620b78 100644
+--- a/control/dns_pipelining_bench_test.go
++++ b/control/dns_pipelining_bench_test.go
+@@ -49,7 +49,7 @@ func BenchmarkPipelinedConn_Sequential(b *testing.B) {
+ 			resBuf := make([]byte, 2+len(out))
+ 			binary.BigEndian.PutUint16(resBuf[0:2], uint16(len(out)))
+ 			copy(resBuf[2:], out)
+-			server.Write(resBuf)
++			_, _ = server.Write(resBuf)
+ 		}
+ 	}()
+ 
+@@ -102,7 +102,7 @@ func BenchmarkPipelinedConn_Concurrent(b *testing.B) {
+ 			resBuf := make([]byte, 2+len(out))
+ 			binary.BigEndian.PutUint16(resBuf[0:2], uint16(len(out)))
+ 			copy(resBuf[2:], out)
+-			server.Write(resBuf)
++			_, _ = server.Write(resBuf)
+ 		}
+ 	}()
+ 
+@@ -249,7 +249,7 @@ func BenchmarkPipelinedConn_Contention(b *testing.B) {
+ 			resBuf := make([]byte, 2+len(out))
+ 			binary.BigEndian.PutUint16(resBuf[0:2], uint16(len(out)))
+ 			copy(resBuf[2:], out)
+-			server.Write(resBuf)
++			_, _ = server.Write(resBuf)
+ 		}
+ 	}()
+ 
+diff --git a/control/hash_utils.go b/control/hash_utils.go
+index 2c54bdd..758ae06 100644
+--- a/control/hash_utils.go
++++ b/control/hash_utils.go
+@@ -41,8 +41,3 @@ func hashAddrPort(ap netip.AddrPort) uint64 {
+ 	return h
+ }
+ 
+-func hashPacketSnifferKey(k PacketSnifferKey) uint64 {
+-	h1 := hashAddrPort(k.LAddr)
+-	h2 := hashAddrPort(k.RAddr)
+-	return h1 ^ bits.RotateLeft64(h2, 1)
+-}
+diff --git a/control/netns_utils.go b/control/netns_utils.go
+index c96e43e..38641e1 100644
+--- a/control/netns_utils.go
++++ b/control/netns_utils.go
+@@ -83,8 +83,8 @@ func (ns *DaeNetns) Setup() (err error) {
+ }
+ 
+ func (ns *DaeNetns) Close() (err error) {
+-	DeleteNamedNetns(NsName)
+-	DeleteLink(HostVethName)
++	_ = DeleteNamedNetns(NsName)
++	_ = DeleteLink(HostVethName)
+ 	return
+ }
+ 
+@@ -99,7 +99,7 @@ func (ns *DaeNetns) With(f func() error) (err error) {
+ 	if err = netns.Set(ns.daeNs); err != nil {
+ 		return fmt.Errorf("failed to switch to daens: %v", err)
+ 	}
+-	defer netns.Set(ns.hostNs)
++	defer func() { _ = netns.Set(ns.hostNs) }()
+ 
+ 	if err = f(); err != nil {
+ 		return fmt.Errorf("failed to run func in dae netns: %v", err)
+@@ -116,7 +116,7 @@ func (ns *DaeNetns) setup() (err error) {
+ 	if ns.hostNs, err = netns.Get(); err != nil {
+ 		return fmt.Errorf("failed to get host netns: %v", err)
+ 	}
+-	defer netns.Set(ns.hostNs)
++	defer func() { _ = netns.Set(ns.hostNs) }()
+ 
+ 	if err = ns.setupVeth(); err != nil {
+ 		return
+@@ -143,7 +143,7 @@ func (ns *DaeNetns) setupRoutingPolicy() (err error) {
+ 	if err = netns.Set(ns.daeNs); err != nil {
+ 		return fmt.Errorf("failed to switch to daens: %v", err)
+ 	}
+-	defer netns.Set(ns.hostNs)
++	defer func() { _ = netns.Set(ns.hostNs) }()
+ 
+ 	/// Insert ip rule / ip route.
+ 	var table = 2023
+@@ -222,7 +222,7 @@ func (ns *DaeNetns) setupRoutingPolicy() (err error) {
+ }
+ func (ns *DaeNetns) setupVeth() (err error) {
+ 	// ip l a dae0 type veth peer name dae0peer
+-	DeleteLink(HostVethName)
++	_ = DeleteLink(HostVethName)
+ 	if err = netlink.LinkAdd(&netlink.Veth{
+ 		LinkAttrs: netlink.LinkAttrs{
+ 			Name:   HostVethName,
+@@ -247,7 +247,7 @@ func (ns *DaeNetns) setupVeth() (err error) {
+ 
+ func (ns *DaeNetns) setupNetns() (err error) {
+ 	// ip netns a daens
+-	DeleteNamedNetns(NsName)
++	_ = DeleteNamedNetns(NsName)
+ 	ns.daeNs, err = netns.NewNamed(NsName)
+ 	if err != nil {
+ 		return fmt.Errorf("failed to create netns: %v", err)
+@@ -264,7 +264,7 @@ func (ns *DaeNetns) setupNetns() (err error) {
+ 	if err = netns.Set(ns.daeNs); err != nil {
+ 		return fmt.Errorf("failed to switch to daens: %v", err)
+ 	}
+-	defer netns.Set(ns.hostNs)
++	defer func() { _ = netns.Set(ns.hostNs) }()
+ 	// (ip net e daens) ip l s dae0peer up
+ 	if err = netlink.LinkSetUp(ns.dae0peer); err != nil {
+ 		return fmt.Errorf("failed to set link dae0peer up: %v", err)
+@@ -297,11 +297,11 @@ func (ns *DaeNetns) setupSysctl() (err error) {
+ 	if err = netns.Set(ns.daeNs); err != nil {
+ 		return fmt.Errorf("failed to switch to daens: %v", err)
+ 	}
+-	defer netns.Set(ns.hostNs)
++	defer func() { _ = netns.Set(ns.hostNs) }()
+ 
+ 	// *_early_demux is not mandatory, but it's recommended to enable it for better performance
+-	sysctl.Keyf("net.ipv4.tcp_early_demux").Set("1", false)
+-	sysctl.Keyf("net.ipv4.ip_early_demux").Set("1", false)
++	_ = sysctl.Keyf("net.ipv4.tcp_early_demux").Set("1", false)
++	_ = sysctl.Keyf("net.ipv4.ip_early_demux").Set("1", false)
+ 
+ 	// (ip net e daens) sysctl net.ipv4.conf.dae0peer.accept_local=1
+ 	// This is to prevent kernel from dropping skb due to "martian source" check: https://elixir.bootlin.com/linux/v6.6/source/net/ipv4/fib_frontend.c#L381
+@@ -315,7 +315,7 @@ func (ns *DaeNetns) setupIPv4Datapath() (err error) {
+ 	if err = netns.Set(ns.daeNs); err != nil {
+ 		return fmt.Errorf("failed to switch to daens: %v", err)
+ 	}
+-	defer netns.Set(ns.hostNs)
++	defer func() { _ = netns.Set(ns.hostNs) }()
+ 
+ 	// (ip net e daens) ip a a 169.254.0.11 dev dae0peer
+ 	// Although transparent UDP socket doesn't use this IP, it's still needed to make proper L3 header
+@@ -372,7 +372,7 @@ func (ns *DaeNetns) setupIPv6Datapath() (err error) {
+ 	if err = netns.Set(ns.daeNs); err != nil {
+ 		return fmt.Errorf("failed to switch to daens: %v", err)
+ 	}
+-	defer netns.Set(ns.hostNs)
++	defer func() { _ = netns.Set(ns.hostNs) }()
+ 
+ 	// (ip net e daens) ip -6 r a default via fe80::ecee:eeff:feee:eeee dev dae0peer
+ 	if err = netlink.RouteAdd(&netlink.Route{
+@@ -396,7 +396,7 @@ func (ns *DaeNetns) setupIPv6Datapath() (err error) {
+ 
+ func DeleteNamedNetns(name string) error {
+ 	namedPath := path.Join("/run/netns", name)
+-	unix.Unmount(namedPath, unix.MNT_DETACH|unix.MNT_FORCE)
++	_ = unix.Unmount(namedPath, unix.MNT_DETACH|unix.MNT_FORCE)
+ 	return os.Remove(namedPath)
+ }
+ 
+diff --git a/control/routing_matcher_builder.go b/control/routing_matcher_builder.go
+index 30cc641..2cfc9fc 100644
+--- a/control/routing_matcher_builder.go
++++ b/control/routing_matcher_builder.go
+@@ -30,7 +30,6 @@ type RoutingMatcherBuilder struct {
+ 	rules              []bpfMatchSet
+ 	simulatedLpmTries  [][]netip.Prefix
+ 	simulatedDomainSet []routing.DomainSet
+-	fallback           *routing.Outbound
+ }
+ 
+ func NewRoutingMatcherBuilder(log *logrus.Logger, rules []*config_parser.RoutingRule, outboundName2Id map[string]uint8, bpf *bpfObjects, fallback config.FunctionOrString) (b *RoutingMatcherBuilder, err error) {
+@@ -328,12 +327,12 @@ func (b *RoutingMatcherBuilder) BuildKernspace(log *logrus.Logger) (err error) {
+ 		}
+ 		m, err := b.bpf.newLpmMap(keys, values)
+ 		if err != nil {
+-			return fmt.Errorf("newLpmMap: %w", err)
++			return fmt.Errorf("new lpm map: %w", err)
+ 		}
+ 		// We cannot invoke BpfMapBatchUpdate when value is ebpf.Map.
+ 		if err = b.bpf.LpmArrayMap.Update(uint32(i), m, ebpf.UpdateAny); err != nil {
+ 			m.Close()
+-			return fmt.Errorf("Update: %w", err)
++			return fmt.Errorf("update lpm map: %w", err)
+ 		}
+ 		m.Close()
+ 	}
+@@ -347,7 +346,7 @@ func (b *RoutingMatcherBuilder) BuildKernspace(log *logrus.Logger) (err error) {
+ 	if _, err = BpfMapBatchUpdate(b.bpf.RoutingMap, routingsKeys, b.rules, &ebpf.BatchOptions{
+ 		ElemFlags: uint64(ebpf.UpdateAny),
+ 	}); err != nil {
+-		return fmt.Errorf("BpfMapBatchUpdate: %w", err)
++		return fmt.Errorf("batch update routing map: %w", err)
+ 	}
+ 	log.Infof("Routing match set len: %v/%v", len(b.rules), consts.MaxMatchSetLen)
+ 
+diff --git a/control/tcp.go b/control/tcp.go
+index 6625f56..5f53e7c 100644
+--- a/control/tcp.go
++++ b/control/tcp.go
+@@ -208,16 +208,16 @@ func RelayTCP(lConn, rConn netproxy.Conn) (err error) {
+ 	go func() {
+ 		_, e := copyWait(ctx, rConn, lConn)
+ 		if rConn, ok := rConn.(WriteCloser); ok {
+-			rConn.CloseWrite()
++			_ = rConn.CloseWrite()
+ 		}
+-		rConn.SetReadDeadline(time.Now().Add(10 * time.Second))
++		_ = rConn.SetReadDeadline(time.Now().Add(10 * time.Second))
+ 		eCh <- e
+ 	}()
+ 	_, e := copyWait(ctx, lConn, rConn)
+ 	if lConn, ok := lConn.(WriteCloser); ok {
+-		lConn.CloseWrite()
++		_ = lConn.CloseWrite()
+ 	}
+-	lConn.SetReadDeadline(time.Now().Add(10 * time.Second))
++	_ = lConn.SetReadDeadline(time.Now().Add(10 * time.Second))
+ 	if e != nil {
+ 		cancel()
+ 		e2 := <-eCh
+diff --git a/control/udp.go b/control/udp.go
+index d7fcddc..c5207be 100644
+--- a/control/udp.go
++++ b/control/udp.go
+@@ -133,7 +133,7 @@ func (c *ControlPlane) handlePkt(lConn *net.UDPConn, data []byte, src, pktDst, r
+ 					WithField("to", realDst).
+ 					Trace("sniffUdp")
+ 			}
+-			defer DefaultPacketSnifferSessionMgr.Remove(key, sniffer)
++			defer func() { _ = DefaultPacketSnifferSessionMgr.Remove(key, sniffer) }()
+ 			// Re-handlePkt after self func.
+ 			toRehandle := sniffer.Data()[1 : len(sniffer.Data())-1] // Skip the first empty and the last (self).
+ 			sniffer.Mu.Unlock()
+@@ -143,7 +143,7 @@ func (c *ControlPlane) handlePkt(lConn *net.UDPConn, data []byte, src, pktDst, r
+ 						for _, d := range toRehandle {
+ 							dCopy := pool.Get(len(d))
+ 							copy(dCopy, d)
+-							go c.handlePkt(lConn, dCopy, src, pktDst, realDst, routingResult, true)
++							go func() { _ = c.handlePkt(lConn, dCopy, src, pktDst, realDst, routingResult, true) }()
+ 						}
+ 					}
+ 				}()
+diff --git a/control/utils.go b/control/utils.go
+index 39dd79a..751cd5f 100644
+--- a/control/utils.go
++++ b/control/utils.go
+@@ -46,7 +46,7 @@ func (c *ControlPlane) Route(src, dst netip.AddrPort, domain string, l4proto con
+ 		return 0, 0, false, err
+ 	}
+ 
+-	return outboundIndex, mark, false, nil
++	return outboundIndex, mark, must, nil
+ }
+ 
+ func (c *controlPlaneCore) RetrieveRoutingResult(src, dst netip.AddrPort, l4proto uint8) (result *bpfRoutingResult, err error) {
+diff --git a/pkg/anybuffer/anybuffer.go b/pkg/anybuffer/anybuffer.go
+index d958756..71a6e31 100644
+--- a/pkg/anybuffer/anybuffer.go
++++ b/pkg/anybuffer/anybuffer.go
+@@ -37,7 +37,6 @@ const maxInt = int(^uint(0) >> 1)
+ func (b *Buffer[T]) Slice() []T { return b.buf }
+ 
+ // empty reports whether the unread portion of the buffer is empty.
+-func (b *Buffer[T]) empty() bool { return len(b.buf) <= 0 }
+ 
+ // Len returns the number of bytes of the unread portion of the buffer;
+ // b.Len() == len(b.Slice()).
+diff --git a/pkg/config_parser/walker.go b/pkg/config_parser/walker.go
+index ee7d235..2599900 100644
+--- a/pkg/config_parser/walker.go
++++ b/pkg/config_parser/walker.go
+@@ -76,9 +76,7 @@ func (w *Walker) parseNonEmptyParamList(list *dae_config.NonEmptyParameterListCo
+ 	return paramParser.list
+ }
+ 
+-func (w *Walker) reportKeyUnsupportedError(ctx interface{}, keyName, funcName string) {
+-	w.ReportError(ctx, ErrorType_Unsupported, fmt.Sprintf("key %v in %v()", strconv.Quote(keyName), funcName))
+-}
++
+ 
+ type functionVerifier func(function *Function, ctx interface{}) bool
+ 
+diff --git a/pkg/geodata/decode.go b/pkg/geodata/decode.go
+index 544f8c0..f4e7921 100644
+--- a/pkg/geodata/decode.go
++++ b/pkg/geodata/decode.go
+@@ -81,12 +81,12 @@ Loop:
+ 			if strings.EqualFold(string(container), code) {
+ 				count++
+ 				offset := -(1 + int64(varintLenByteLen) + int64(codeVarintLength))
+-				f.Seek(offset, 1)               // back to the start of GeoIP or GeoSite varint
++				_, _ = f.Seek(offset, 1)               // back to the start of GeoIP or GeoSite varint
+ 				advancedN = geoDataVarintLength // the number of bytes to be read in next round
+ 			} else {
+ 				count = 1
+ 				offset := int64(geoDataVarintLength) - int64(codeVarintLength) - int64(varintLenByteLen) - 1
+-				f.Seek(offset, 1) // skip the unmatched GeoIP or GeoSite varint
++				_, _ = f.Seek(offset, 1) // skip the unmatched GeoIP or GeoSite varint
+ 				advancedN = 1     // the next round will be the start of another GeoIPList or GeoSiteList
+ 			}
+ 		case 6: // matched GeoIP or GeoSite varint
+diff --git a/pkg/trie/trie_test.go b/pkg/trie/trie_test.go
+index d0e4c5c..a1c534f 100644
+--- a/pkg/trie/trie_test.go
++++ b/pkg/trie/trie_test.go
+@@ -99,28 +99,28 @@ func TestTrie(t *testing.T) {
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+-	if !(trie.HasPrefix("nc.tset^") == true) {
++	if !trie.HasPrefix("nc.tset^") {
+ 		t.Fatal("^test.cn")
+ 	}
+-	if !(trie.HasPrefix("nc^") == false) {
++	if trie.HasPrefix("nc^") {
+ 		t.Fatal("^cn")
+ 	}
+-	if !(trie.HasPrefix("nc.") == true) {
++	if !trie.HasPrefix("nc.") {
+ 		t.Fatal(".cn")
+ 	}
+-	if !(trie.HasPrefix("nc.^") == true) {
++	if !trie.HasPrefix("nc.^") {
+ 		t.Fatal("^.cn")
+ 	}
+-	if !(trie.HasPrefix("nc._") == true) {
++	if !trie.HasPrefix("nc._") {
+ 		t.Fatal("_.cn")
+ 	}
+-	if !(trie.HasPrefix("n") == false) {
++	if trie.HasPrefix("n") {
+ 		t.Fatal("n")
+ 	}
+-	if !(trie.HasPrefix("n^") == false) {
++	if trie.HasPrefix("n^") {
+ 		t.Fatal("^n")
+ 	}
+-	if !(trie.HasPrefix("moc.cbatnetnoc^") == true) {
++	if !trie.HasPrefix("moc.cbatnetnoc^") {
+ 		t.Fatal("contentabc.com")
+ 	}
+ }
+diff --git a/trace/trace.go b/trace/trace.go
+index 36adbc5..44be04f 100644
+--- a/trace/trace.go
++++ b/trace/trace.go
+@@ -90,7 +90,7 @@ func StartTrace(ctx context.Context, ipVersion int, l4ProtoNo uint16, port int,
+ func rewriteAndLoadBpf(ipVersion int, l4ProtoNo uint16, port int) (_ *bpfObjects, err error) {
+ 	spec, err := loadBpf()
+ 	if err != nil {
+-		return nil, fmt.Errorf("failed to load BPF: %+v\n", err)
++		return nil, fmt.Errorf("failed to load BPF: %w", err)
+ 	}
+ 	if err := spec.RewriteConstants(map[string]interface{}{
+ 		"tracing_cfg": struct {
+@@ -219,7 +219,7 @@ func attachBpfToTargets(objs *bpfObjects, targets map[string]int) (links []link.
+ 		err = fmt.Errorf("failed to attach kprobes to any target")
+ 	}
+ 	links = append(links, kp)
+-	return links, nil
++	return links, err
+ }
+ 
+ func handleEvents(ctx context.Context, objs *bpfObjects, outputFile string, kfreeSkbReasons map[uint64]string, dropOnly bool) (err error) {
+-- 
+2.43.0
+
