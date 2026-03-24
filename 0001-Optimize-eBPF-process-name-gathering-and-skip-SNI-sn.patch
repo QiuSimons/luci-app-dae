@@ -1,0 +1,182 @@
+From c226baa1ab2448dc4beb5bb5c1f995f20ffc4b8f Mon Sep 17 00:00:00 2001
+From: AI Builder Bot <bot@example.com>
+Date: Tue, 24 Mar 2026 13:07:35 +0800
+Subject: [PATCH] Optimize eBPF process name gathering and skip SNI sniffing
+ for TCP DNS
+
+This commit introduces three main improvements:
+
+1. eBPF Process Name Extraction: Replaced complex user space mm->arg_start parsing logic with standard bpf_get_current_comm() helper, significantly improving the stability and performance of the eBPF datapath. Eliminates previous flakiness around -EFAULT due to paged-out memory.
+
+2. DNS Exception for TCP: Extended the eBPF routing exception rule for DNS port 53 to include TCP traffic (L4ProtoType_TCP), ensuring consistent behavior with UDP DNS traffic.
+
+3. Skip SNI Sniffing for TCP DNS: Bypassed the TLS SNI sniffer for TCP port 53 traffic in the control plane (control/tcp.go), resolving significant latency issues caused by the sniffer timing out on binary DNS payloads.
+---
+ control/kern/tproxy.c | 76 +++++--------------------------------------
+ control/tcp.go        | 28 +++++++++-------
+ 2 files changed, 25 insertions(+), 79 deletions(-)
+
+diff --git a/control/kern/tproxy.c b/control/kern/tproxy.c
+index 1fe30ec..2affd50 100644
+--- a/control/kern/tproxy.c
++++ b/control/kern/tproxy.c
+@@ -852,7 +852,8 @@ static __always_inline __s64 route(const struct route_params *params)
+ 	// proxy Subrule is like: domain(suffix:baidu.com, suffix:google.com) Match
+ 	// set is like: suffix:baidu.com
+ 	ctx.isdns_must_goodsubrule_badrule =
+-		(ctx.h_dport == 53 && _l4proto_type == L4ProtoType_UDP) << 3;
++		(ctx.h_dport == 53 &&
++		 (_l4proto_type == L4ProtoType_UDP || _l4proto_type == L4ProtoType_TCP)) << 3;
+ 
+ 	struct lpm_key lpm_key_saddr = {
+ 		.trie_key = { IPV6_BYTE_LENGTH * 8, {} },
+@@ -1224,7 +1225,8 @@ new_connection:;
+ 
+ 	alive = bpf_map_lookup_elem(&outbound_connectivity_map, &q);
+ 	if (alive && *alive == 0 &&
+-	    !(l4proto == IPPROTO_UDP && tuples.five.dport == bpf_htons(53))) {
++	    !(tuples.five.dport == bpf_htons(53) &&
++	      (l4proto == IPPROTO_UDP || l4proto == IPPROTO_TCP))) {
+ 		// Outbound is not alive. Dns is an exception.
+ 		goto block;
+ 	}
+@@ -1723,76 +1725,14 @@ int tproxy_dae0_ingress(struct __sk_buff *skb)
+ 	return bpf_redirect(redirect_entry->ifindex, flags);
+ }
+ 
+-struct get_real_comm_ctx {
+-	char *arg_buf;
+-	u8 l;
+-};
+-
+-static int __noinline get_real_comm_loop_cb(__u32 index, void *data)
+-{
+-	/*
+-	* For string like: /usr/lib/sddm/sddm-helper --socket /tmp/sddm-auth1
+-	* We extract "sddm-helper" from it.
+-	*/
+-	struct get_real_comm_ctx *ctx = (struct get_real_comm_ctx *)data;
+-
+-	if (index >= MAX_ARG_LEN) // always false, just to make verifier happy
+-		return 1;
+-	if (unlikely(ctx->arg_buf[index] == '/'))
+-		ctx->l = index + 1;
+-	if (unlikely(ctx->arg_buf[index] == ' ' ||
+-		     ctx->arg_buf[index] == '\0')) {
+-		// Write to dst.
+-		ctx->arg_buf[index] = '\0';
+-		return 1;
+-	}
+-	return 0;
+-}
+-
+ /// Parse command line arguments to get the real command name and tgid.
+ static __always_inline int get_pid_pname(struct pid_pname *pid_pname)
+ {
+-	int ret;
+-	// Get pointer to args string.
+-	struct task_struct *task = (void *)bpf_get_current_task();
+-	char *args = (void *)BPF_CORE_READ(task, mm, arg_start);
+-
+-	// Read args to buffer.
+-	char arg_buf[MAX_ARG_LEN]; // Allocate it out of ctx to pass CO-RE
+-	struct get_real_comm_ctx ctx = {};
+-
+-	ctx.arg_buf = arg_buf;
+-	ret = bpf_core_read_user_str(arg_buf, MAX_ARG_LEN, args);
+-	if (unlikely(ret < 0)) {
+-		bpf_printk(
+-			"failed to read process name: bpf_core_read_user_str: %d",
+-			ret);
+-		return ret;
+-	}
+-
+-	// Find range of command name.
+-	ret = bpf_loop(MAX_ARG_LEN, get_real_comm_loop_cb, &ctx, 0);
+-	if (unlikely(ret < 0))
+-		return ret;
+-
+-	u8 offset = ctx.l;
++	__u64 pid_tgid = bpf_get_current_pid_tgid();
+ 
+-	for (u8 i = 0; i < TASK_COMM_LEN; i++) {
+-		if (offset + i < MAX_ARG_LEN && arg_buf[offset + i] != '\0') {
+-			pid_pname->pname[i] = arg_buf[offset + i];
+-		} else {
+-			pid_pname->pname[i] = '\0';
+-			break;
+-		}
+-	}
+-
+-	// Pupulate tgid
+-	ret = bpf_core_read(&pid_pname->pid, sizeof(pid_pname->pid),
+-			    &task->tgid);
+-	if (unlikely(ret < 0)) {
+-		bpf_printk("failed to read pid: %d", ret);
+-		return ret;
+-	}
++	pid_pname->pid = pid_tgid >> 32;
++	if (bpf_get_current_comm(&pid_pname->pname, sizeof(pid_pname->pname)))
++		pid_pname->pname[0] = '\0';
+ 	return 0;
+ }
+ 
+diff --git a/control/tcp.go b/control/tcp.go
+index 7b287d7..6625f56 100644
+--- a/control/tcp.go
++++ b/control/tcp.go
+@@ -25,18 +25,25 @@ import (
+ func (c *ControlPlane) handleConn(lConn net.Conn) (err error) {
+ 	defer lConn.Close()
+ 
+-	// Sniff target domain.
+-	sniffer := sniffing.NewConnSniffer(lConn, c.sniffingTimeout)
+-	// ConnSniffer should be used later, so we cannot close it now.
+-	defer sniffer.Close()
+-	domain, err := sniffer.SniffTcp()
+-	if err != nil && !sniffing.IsSniffingError(err) {
+-		return err
+-	}
+-
+ 	// Get tuples and outbound.
+ 	src := lConn.RemoteAddr().(*net.TCPAddr).AddrPort()
+ 	dst := lConn.LocalAddr().(*net.TCPAddr).AddrPort()
++
++	// Sniff target domain.
++	var domain string
++	var relaySrc netproxy.Conn = lConn
++	if dst.Port() != 53 {
++		sniffer := sniffing.NewConnSniffer(lConn, c.sniffingTimeout)
++		// ConnSniffer should be used later, so we cannot close it now.
++		defer sniffer.Close()
++		var sniffErr error
++		domain, sniffErr = sniffer.SniffTcp()
++		if sniffErr != nil && !sniffing.IsSniffingError(sniffErr) {
++			return sniffErr
++		}
++		relaySrc = sniffer
++	}
++
+ 	routingResult, err := c.core.RetrieveRoutingResult(src, dst, consts.IPPROTO_TCP)
+ 	if err != nil {
+ 		return fmt.Errorf("failed to retrieve target info %v: %v", dst.String(), err)
+@@ -44,7 +51,6 @@ func (c *ControlPlane) handleConn(lConn net.Conn) (err error) {
+ 	src = common.ConvergeAddrPort(src)
+ 	dst = common.ConvergeAddrPort(dst)
+ 
+-	// Dial and relay.
+ 	rConn, err := c.RouteDialTcp(&RouteDialParam{
+ 		Outbound:    consts.OutboundIndex(routingResult.Outbound),
+ 		Domain:      domain,
+@@ -60,7 +66,7 @@ func (c *ControlPlane) handleConn(lConn net.Conn) (err error) {
+ 	}
+ 	defer rConn.Close()
+ 
+-	if err = RelayTCP(sniffer, rConn); err != nil {
++	if err = RelayTCP(relaySrc, rConn); err != nil {
+ 		switch {
+ 		case strings.HasSuffix(err.Error(), "write: broken pipe"),
+ 			strings.HasSuffix(err.Error(), "i/o timeout"),
+-- 
+2.43.0
+
