@@ -91,6 +91,7 @@ define Build/Compile
 		rm -rf $(PKG_BUILD_DIR)/../quic-go ; \
 		git clone --depth=1 -b perf/complete-optimizations https://github.com/olicesx/outbound.git $(PKG_BUILD_DIR)/../outbound ; \
 		go mod edit -replace github.com/daeuniverse/outbound=../outbound ; \
+		wget -qO - https://github.com/sbwml/dae/commit/e0f57b4.patch | patch -p1 ; \
         go get -u=patch ; \
 		go mod tidy ; \
 		popd ; \
