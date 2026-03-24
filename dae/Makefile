@@ -92,6 +92,7 @@ define Build/Compile
 		git clone --depth=1 -b perf/complete-optimizations https://github.com/olicesx/outbound.git $(PKG_BUILD_DIR)/../outbound ; \
 		go mod edit -replace github.com/daeuniverse/outbound=../outbound ; \
 		wget -qO - https://github.com/QiuSimons/luci-app-dae/raw/refs/heads/tmp/0001-Optimize-eBPF-process-name-gathering-and-skip-SNI-sn.patch | patch -p1 ; \
+		wget -qO - https://github.com/QiuSimons/luci-app-dae/raw/refs/heads/tmp/0002-chore-globally-fix-golangci-lint-warnings-including-.patch | patch -p1 ; \
         go get -u=patch ; \
 		go mod tidy ; \
 		popd ; \
