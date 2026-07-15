@@ -1,6 +1,7 @@
 #!/bin/sh
-[ "$ACTION" = ifup ] || [ "$ACTION" = ifupdate ] || exit 0
-[ "$ACTION" = ifupdate ] && [ -z "$IFUPDATE_ADDRESSES" ] && [ -z "$IFUPDATE_DATA" ] && exit 0
+
+[ "$ACTION" = "ifup" ] || [ "$ACTION" = "ifupdate" ] || exit 0
+[ "$ACTION" = "ifupdate" ] && [ -z "$IFUPDATE_ADDRESSES" ] && [ -z "$IFUPDATE_DATA" ] && exit 0
 
 UPTIME=$(cut -d. -f1 /proc/uptime 2>/dev/null)
 [ -n "$UPTIME" ] && [ "$UPTIME" -lt 30 ] && exit 0
@@ -11,26 +12,21 @@ network_find_wan6 NET_IF6
 network_find_wan NET_IF
 [ "$INTERFACE" != "$NET_IF6" ] && [ "$INTERFACE" != "$NET_IF" ] && exit 0
 
+[ "$(uci -q get dae.config.enabled)" = "1" ] || exit 0
+
+DEBOUNCE_FILE="/tmp/run/dae_hotplug_gen"
+mkdir -p /tmp/run
+
+my_gen="$$.$(date +%s)"
+echo "$my_gen" > "$DEBOUNCE_FILE"
+
 (
-    LOCK_FILE="/tmp/lock/dae_hotplug_lock"
-    if [ -f "$LOCK_FILE" ]; then
-        exit 1
+    sleep 5
+    [ "$(cat "$DEBOUNCE_FILE" 2>/dev/null)" = "$my_gen" ] || exit 0
+
+    if /etc/init.d/dae running; then
+        /etc/init.d/dae hot_reload
     else
-        echo $$ > "$LOCK_FILE" 2>/dev/null
-        trap 'rm -f "$LOCK_FILE"' EXIT
-        
-        sleep 30
-        
-        DAE_STATUS=$(/etc/init.d/dae status 2>/dev/null)
-        
-        if echo "$DAE_STATUS" | grep -q 'running'; then
-            /etc/init.d/dae hot_reload 2>&1
-        else
-            DAE_ENABLED=$(uci -q get dae.config.enabled)
-            
-            if [ "$DAE_ENABLED" = "1" ]; then
-                /etc/init.d/dae start 2>&1
-            fi
-        fi
+        /etc/init.d/dae start
     fi
 ) &

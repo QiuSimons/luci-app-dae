@@ -5,13 +5,13 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=dae
-PKG_VERSION:=2025.11.18
+PKG_VERSION:=2026.07.13
 PKG_RELEASE:=1
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_PROTO:=git
-PKG_SOURCE_VERSION:=0bae0fb7edc99fbd2ad2bc55480e26a8646235c2
-PKG_SOURCE_URL:=https://github.com/LostAttractor/dae.git
+PKG_SOURCE_VERSION:=f303e94cebeda73de63a5ab00652009a12f2384e
+PKG_SOURCE_URL:=https://github.com/olicesx/dae.git
 PKG_MIRROR_HASH:=skip
 
 PKG_LICENSE:=AGPL-3.0-only
@@ -24,6 +24,10 @@ PKG_BUILD_FLAGS:=no-mips16
 
 GO_PKG:=github.com/daeuniverse/dae
 GO_PKG_EXCLUDES:=control/kern/tests
+
+GO_PKG_LDFLAGS:= \
+	-s -w -buildid= \
+	-linkmode external -extldflags '-static -Wl,-s'
 GO_PKG_LDFLAGS_X:= \
 	$(GO_PKG)/cmd.Version=$(PKG_VERSION) \
 	$(GO_PKG)/common/consts.MaxMatchSetLen_=1024
@@ -35,20 +39,38 @@ include $(INCLUDE_DIR)/package.mk
 include $(INCLUDE_DIR)/bpf.mk
 include $(TOPDIR)/feeds/packages/lang/golang/golang-package.mk
 
-GO_PKG_TARGET_VARS+= \
-	CGO_LDFLAGS="$(TARGET_LDFLAGS) -static" \
-	GOEXPERIMENT=greenteagc
+GO_PKG_BUILD_VARS+= \
+	GOFLAGS="-trimpath -buildvcs=false -pgo=auto"
 
-GO_PKG_DEFAULT_LDFLAGS:=-w -s -linkmode external -extldflags '-static'
+GO_PKG_TARGET_VARS+= \
+	CGO_LDFLAGS="$(TARGET_LDFLAGS) -static -Wl,-s" \
+	GOEXPERIMENT=newinliner,simd
 
 define Package/dae
   SECTION:=net
   CATEGORY:=Network
   SUBMENU:=Web Servers/Proxies
   TITLE:=A lightweight and high-performance transparent proxy solution
-  DEPENDS:=$(GO_ARCH_DEPENDS) $(BPF_DEPENDS) \
-    +ca-bundle +kmod-sched-core +kmod-sched-bpf +kmod-xdp-sockets-diag \
-    +kmod-veth +v2ray-geoip +v2ray-geosite
+  DEPENDS:=$(GO_ARCH_DEPENDS) \
+    +ca-bundle +kmod-sched-core +kmod-sched-bpf \
+    +kmod-veth +v2ray-geoip +v2ray-geosite \
+    +@KERNEL_XDP_SOCKETS \
+    +DAE_USE_VMLINUX_BTF:vmlinux-btf
+endef
+
+define Package/dae/config
+	choice
+		prompt "BTF source for CO-RE"
+		default DAE_USE_KERNEL_BTF
+		depends on PACKAGE_dae
+
+	config DAE_USE_KERNEL_BTF
+		bool "Use kernel BTF (integrated)"
+		depends on KERNEL_DEBUG_INFO_BTF
+
+	config DAE_USE_VMLINUX_BTF
+		bool "Use vmlinux-btf package"
+	endchoice
 endef
 
 define Package/dae/conffiles
@@ -70,12 +92,8 @@ endef
 define Build/Compile
 	( \
 		pushd $(PKG_BUILD_DIR) ; \
-		wget -qO - https://github.com/QiuSimons/dae/commit/f6b4438.patch | patch -p1 -N || true ; \
-		go mod edit -replace="github.com/daeuniverse/outbound=github.com/lostattractor/outbound@next" ; \
-		go get github.com/cilium/ebpf@latest ; \
 		go get -u=patch ; \
 		go mod tidy ; \
-		popd ; \
 		export \
 		$(GO_GENERAL_BUILD_CONFIG_VARS) \
 		$(GO_PKG_BUILD_CONFIG_VARS) \
@@ -85,16 +103,24 @@ define Build/Compile
 		BPF_CFLAGS="$(DAE_CFLAGS)" \
 		BPF_TARGET="bpfel,bpfeb" \
 		BPF_TRACE_TARGET="$(GO_ARCH)" ; \
-		go generate $(PKG_BUILD_DIR)/control/control.go ; \
-		go generate $(PKG_BUILD_DIR)/trace/trace.go ; \
-		$(call GoPackage/Build/Compile) ; \
+		go generate ./control/control.go ; \
+		go generate ./trace/trace.go ; \
+		popd ; \
 	)
+	$(call GoPackage/Build/Compile)
 endef
 
 define Package/dae/install
-	$(call GoPackage/Package/Install/Bin,$(1))
+	$(call GoPackage/Package/Install/Bin,$(PKG_INSTALL_DIR))
+	$(INSTALL_DIR) $(1)/usr/bin/
+	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/dae $(1)/usr/bin/dae
 	$(INSTALL_DIR) $(1)/etc/dae/
 	$(INSTALL_CONF) $(PKG_BUILD_DIR)/example.dae $(1)/etc/dae/
+	$(INSTALL_CONF) $(CURDIR)/files/config.dae $(1)/etc/dae/config.dae
+	$(INSTALL_DIR) $(1)/etc/dae/config.d/
+	$(INSTALL_CONF) $(CURDIR)/files/config.d/dns.dae $(1)/etc/dae/config.d/dns.dae
+	$(INSTALL_CONF) $(CURDIR)/files/config.d/node.dae $(1)/etc/dae/config.d/node.dae
+	$(INSTALL_CONF) $(CURDIR)/files/config.d/route.dae $(1)/etc/dae/config.d/route.dae
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) $(CURDIR)/files/dae.config $(1)/etc/config/dae
 	$(INSTALL_DIR) $(1)/etc/init.d

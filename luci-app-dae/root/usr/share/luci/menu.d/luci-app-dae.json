@@ -1,13 +1,15 @@
 {
 	"admin/services/dae": {
-		"title": "DAE",
-		"order": -1,
+		"title": "dae",
 		"action": {
-			"type": "view",
-			"path": "dae/global"
+			"type": "firstchild"
 		},
 		"depends": {
-			"acl": [ "luci-app-dae" ]
+			"acl": [ "luci-app-dae" ],
+			"fs": {
+				"/etc/init.d/dae": "executable"
+			},
+			"uci": { "dae": true }
 		}
 	},
 	"admin/services/dae/global": {

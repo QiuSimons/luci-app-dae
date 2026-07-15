@@ -1,0 +1,22 @@
+# route.dae
+routing {
+    pname(dnsmasq, zerotier-one) -> must_direct
+    dip(224.0.0.0/3, 'ff00::/8', geoip:private) -> direct
+
+    domain(geosite:category-bank-cn, geosite:boc@!cn, geosite:synology) -> direct
+
+    domain(geosite:category-ai-!cn, geosite:google, geosite:category-entertainment, geosite:gfw, geosite:github, geosite:spotify) && l4proto(udp) && dport(443) -> block
+
+    domain(geosite:spotify) -> proxy
+    domain(geosite:category-entertainment) -> proxy
+    domain(geosite:category-ai-!cn, geosite:google, geosite:github) -> proxy
+    domain(geosite:gfw) -> proxy
+
+    dip(geoip:telegram) -> proxy
+
+    dip(geoip:cn) -> direct
+
+    l4proto(udp) && dport(443) -> block
+
+    fallback: proxy
+}

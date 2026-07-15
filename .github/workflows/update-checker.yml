@@ -1,0 +1,99 @@
+name: Update Checker
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */2 * * *"
+
+jobs:
+  check_update:
+    runs-on: ubuntu-latest
+    outputs:
+      updated: ${{ steps.check.outputs.updated }}
+      latest_commit_full: ${{ steps.check.outputs.latest_commit_full }}
+      latest_core_date: ${{ steps.check.outputs.latest_core_date }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Check Upstream Commits
+        id: check
+        run: |
+          latest_commit_info="$(curl -s https://api.github.com/repos/olicesx/dae/commits/kdae)"
+          latest_commit_full="$(echo "$latest_commit_info" | jq -r '.sha')"
+          current_commit_full=$(grep 'PKG_SOURCE_VERSION:=' ./dae/Makefile | cut -d '=' -f 2)
+          
+          if [ "$current_commit_full" = "$latest_commit_full" ]; then
+            echo "Upstream is already up-to-date ($current_commit_full)."
+            echo "updated=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Upstream has new commits. Triggering build..."
+            latest_core_date="$(echo "$latest_commit_info" | jq -r '.commit.committer.date | split("T")[0] | split("-") | "\(.[0]).\(.[1]).\(.[2])"')"
+            
+            echo "updated=true" >> "$GITHUB_OUTPUT"
+            echo "latest_commit_full=$latest_commit_full" >> "$GITHUB_OUTPUT"
+            echo "latest_core_date=$latest_core_date" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: check_update
+    if: needs.check_update.outputs.updated == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Build System Setup
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y squashfs-tools jq dos2unix
+
+      - name: Update Makefile
+        run: |
+          chmod 755 ./dae/files/dae.init
+          find ./ -type f -exec dos2unix {} \; -print
+          
+          sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${{ needs.check_update.outputs.latest_core_date }}/" ./dae/Makefile
+          sed -i "s/^PKG_SOURCE_VERSION:=.*/PKG_SOURCE_VERSION:=${{ needs.check_update.outputs.latest_commit_full }}/" ./dae/Makefile
+
+      - name: Commit file
+        run: |
+          git config --global user.email simonsqiu@foxmail.com
+          git config --global user.name SimonsQiu
+          git add .
+          git commit -m "Update $(date +%Y/%m/%d\ %H:%M:%S\ %Z)" -a
+        continue-on-error: true
+
+      - name: Push changes
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{secrets.ACTIONS_DEPLOY_KEY}}
+          branch: kix
+        continue-on-error: true
+
+      - name: Cleanup Workflow Logs
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          token: ${{secrets.ACTIONS_DEPLOY_KEY}}
+          repository: ${{ github.repository }}
+          retain_days: 1
+        continue-on-error: true
+
+      - name: Delete Older Releases
+        env:
+          GH_TOKEN: ${{secrets.ACTIONS_DEPLOY_KEY}}
+        run: |
+          gh release list --limit 100 | tail -n +4 | awk '{print $1}' | xargs -I {} gh release delete {} --yes --cleanup-tag
+        continue-on-error: true
+
+      - name: Cleanup Old Action Artifacts
+        env:
+          GH_TOKEN: ${{secrets.ACTIONS_DEPLOY_KEY}}
+        run: |
+          gh run list --limit 100 --json databaseId --jq '.[3:].databaseId' | xargs -I {} gh run delete {}
+        continue-on-error: true

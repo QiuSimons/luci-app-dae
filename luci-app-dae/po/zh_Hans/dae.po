@@ -1,10 +1,10 @@
 msgid "DAE"
 msgstr ""
 
-msgid "Running"
+msgid "RUNNING"
 msgstr "运行中"
 
-msgid "Not Running"
+msgid "NOT RUNNING"
 msgstr "未运行"
 
 msgid "Collecting data..."
@@ -46,32 +46,29 @@ msgstr "路由配置"
 msgid "Configure global settings for DAE."
 msgstr "调整DAE的全局设置"
 
-msgid "Configure DNS settings for DAE. Click \"Save\" to apply changes to /etc/dae/config.d/dns.dae."
-msgstr "调整DAE的DNS设置。点击\"保存\"将更改应用到/etc/dae/config.d/dns.dae。"
+msgid "Configure DNS settings for DAE."
+msgstr "调整DAE的DNS设置"
 
-msgid "Configure nodes and groups for DAE. Click \"Save\" to apply changes to /etc/dae/config.d/node.dae."
-msgstr "调整DAE的节点设置。点击\"保存\"将更改应用到/etc/dae/config.d/node.dae。"
+msgid "Configure nodes and groups for DAE."
+msgstr "调整DAE的节点设置"
 
-msgid "Configure routing rules for DAE. Click \"Save\" to apply changes to /etc/dae/config.d/route.dae."
-msgstr "调整DAE的路由设置。点击\"保存\"将更改应用到/etc/dae/config.d/route.dae。"
+msgid "Configure routing rules for DAE."
+msgstr "调整DAE的路由设置"
 
-msgid "Correctly configure the include field for separate-config to work, or enter complete configuration here (other sub-pages won't need configuration and won't take effect)."
-msgstr "需要正确配置的include字段以使得separate-config生效，或者在此处填入完整配置，则其他子分页无需配置，也不会生效。"
+msgid "Correctly configure the include field for separate-config to work, or enter complete configuration here."
+msgstr "需要配置正确的 include 字段以使 separate-config 生效，或者在此处填入完整配置。"
 
 msgid "Logs"
 msgstr "日志"
 
-msgid "Clear Log"
+msgid "Clear logs"
 msgstr "清空日志"
 
 msgid "Memory Usage"
 msgstr "内存占用"
 
-msgid "Service reloaded successfully."
-msgstr "服务重载成功。"
-
-msgid "Failed to reload service: %s"
-msgstr "重载服务失败：%s"
+msgid "Service reloaded successfully"
+msgstr "服务重载成功"
 
 msgid "Enable Auto Subscribe Update"
 msgstr "启用订阅自动更新"
@@ -82,53 +79,29 @@ msgstr "更新周期"
 msgid "Update Time (Every Day)"
 msgstr "更新时间（每天）"
 
-msgid "Every Day"
-msgstr "每天"
+msgid "Format Code"
+msgstr "格式化代码"
 
-msgid "Every Monday"
-msgstr "每周一"
+msgid "Log is empty."
+msgstr "日志为空。"
 
-msgid "Every Tuesday"
-msgstr "每周二"
+msgid "Log file does not exist."
+msgstr "日志文件不存在。"
 
-msgid "Every Wednesday"
-msgstr "每周三"
+msgid "Unknown error: %s"
+msgstr "未知错误: %s"
 
-msgid "Every Thursday"
-msgstr "每周四"
+msgid "Are you sure you want to clear the logs?"
+msgstr "确定要清空日志吗？"
 
-msgid "Every Friday"
-msgstr "每周五"
+msgid "Log cleared successfully"
+msgstr "日志清空成功"
 
-msgid "Every Saturday"
-msgstr "每周六"
+msgid "Failed to clear log: %s"
+msgstr "清空日志失败: %s"
 
-msgid "Every Sunday"
-msgstr "每周日"
+msgid "Scroll to tail"
+msgstr "滚动到底部"
 
-msgid "Status"
-msgstr "状态"
-
-msgid "Service Status"
-msgstr "服务状态"
-
-msgid "Displaying the last 1000 lines of the log."
-msgstr "显示日志的最后 1000 行。"
-
-msgid "Log cleared successfully."
-msgstr "日志已清空。"
-
-msgid "Failed to load log: %s"
-msgstr "加载日志失败：%s"
-
-msgid "Refresh"
-msgstr "刷新"
-
-msgid "Configure routing rules for DAE."
-msgstr "配置DAE的路由规则。"
-
-msgid "Configure nodes and groups for DAE."
-msgstr "配置DAE的节点和组。"
-
-msgid "Configure DNS settings for DAE."
-msgstr "配置DAE的DNS设置。"
+msgid "Scroll to head"
+msgstr "滚动到顶部"
