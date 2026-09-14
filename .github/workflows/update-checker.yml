@@ -5,95 +5,225 @@ on:
   schedule:
     - cron: "0 */2 * * *"
 
+concurrency:
+  group: update-checker
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  actions: write
+
+env:
+  UPSTREAM_REPO: https://github.com/olicesx/dae.git
+  UPSTREAM_TAG: latest
+
 jobs:
   check_update:
+    name: Check Upstream
     runs-on: ubuntu-latest
+
     outputs:
       updated: ${{ steps.check.outputs.updated }}
-      latest_commit_full: ${{ steps.check.outputs.latest_commit_full }}
-      latest_core_date: ${{ steps.check.outputs.latest_core_date }}
+      latest_commit: ${{ steps.check.outputs.latest_commit }}
+      latest_date: ${{ steps.check.outputs.latest_date }}
+
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
+          persist-credentials: false
 
-      - name: Check Upstream Commits
+      - name: Check latest tag
         id: check
+        shell: bash
         run: |
-          latest_commit_info="$(curl -s https://api.github.com/repos/olicesx/dae/commits/lastst)"
-          latest_commit_full="$(echo "$latest_commit_info" | jq -r '.sha')"
-          current_commit_full=$(grep 'PKG_SOURCE_VERSION:=' ./dae/Makefile | cut -d '=' -f 2)
-          
-          if [ "$current_commit_full" = "$latest_commit_full" ]; then
-            echo "Upstream is already up-to-date ($current_commit_full)."
-            echo "updated=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "Upstream has new commits. Triggering build..."
-            latest_core_date="$(echo "$latest_commit_info" | jq -r '.commit.committer.date | split("T")[0] | split("-") | "\(.[0]).\(.[1]).\(.[2])"')"
-            
-            echo "updated=true" >> "$GITHUB_OUTPUT"
-            echo "latest_commit_full=$latest_commit_full" >> "$GITHUB_OUTPUT"
-            echo "latest_core_date=$latest_core_date" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+
+          tag_info="$(
+            git ls-remote \
+              "$UPSTREAM_REPO" \
+              "refs/tags/${UPSTREAM_TAG}" \
+              "refs/tags/${UPSTREAM_TAG}^{}"
+          )"
+
+          if [ -z "$tag_info" ]; then
+            echo "ERROR: upstream tag '${UPSTREAM_TAG}' does not exist."
+            exit 1
           fi
 
+          latest_commit="$(
+            echo "$tag_info" |
+            awk '$2 == "refs/tags/'"${UPSTREAM_TAG}"'^{}" {print $1}'
+          )"
+
+          if [ -z "$latest_commit" ]; then
+            latest_commit="$(
+              echo "$tag_info" |
+              awk '$2 == "refs/tags/'"${UPSTREAM_TAG}"'" {print $1}'
+            )"
+          fi
+
+          if [ -z "$latest_commit" ]; then
+            echo "ERROR: failed to resolve upstream tag."
+            exit 1
+          fi
+
+          current_commit="$(
+            sed -n 's/^PKG_SOURCE_VERSION:=//p' ./dae/Makefile
+          )"
+
+          if [ -z "$current_commit" ]; then
+            echo "ERROR: PKG_SOURCE_VERSION not found."
+            exit 1
+          fi
+
+          echo "Current commit : $current_commit"
+          echo "Latest commit  : $latest_commit"
+
+          if [ "$current_commit" = "$latest_commit" ]; then
+            echo "Already up-to-date."
+            echo "updated=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git fetch \
+            --depth=1 \
+            "$UPSTREAM_REPO" \
+            "$latest_commit"
+
+          latest_date="$(
+            git show \
+              -s \
+              --format='%cs' \
+              "$latest_commit"
+          )"
+
+          if [ -z "$latest_date" ]; then
+            echo "ERROR: failed to get commit date."
+            exit 1
+          fi
+
+          latest_date="${latest_date//-/.}"
+
+          echo "Latest date    : $latest_date"
+
+          {
+            echo "updated=true"
+            echo "latest_commit=$latest_commit"
+            echo "latest_date=$latest_date"
+          } >> "$GITHUB_OUTPUT"
+
   build:
+    name: Update and Build
     needs: check_update
     if: needs.check_update.outputs.updated == 'true'
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Build System Setup
+      - name: Install dependencies
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
+          set -e
           sudo apt-get update
-          sudo apt-get install -y squashfs-tools jq dos2unix
+          sudo apt-get install -y \
+            squashfs-tools \
+            dos2unix
 
       - name: Update Makefile
+        env:
+          LATEST_COMMIT: ${{ needs.check_update.outputs.latest_commit }}
+          LATEST_DATE: ${{ needs.check_update.outputs.latest_date }}
         run: |
-          chmod 755 ./dae/files/dae.init
-          find ./ -type f -exec dos2unix {} \; -print
-          
-          sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${{ needs.check_update.outputs.latest_core_date }}/" ./dae/Makefile
-          sed -i "s/^PKG_SOURCE_VERSION:=.*/PKG_SOURCE_VERSION:=${{ needs.check_update.outputs.latest_commit_full }}/" ./dae/Makefile
+          set -euo pipefail
 
-      - name: Commit file
+          chmod 755 ./dae/files/dae.init
+          find . -type f -exec dos2unix {} \;
+
+          sed -i \
+            "s/^PKG_VERSION:=.*/PKG_VERSION:=${LATEST_DATE}/" \
+            ./dae/Makefile
+
+          sed -i \
+            "s/^PKG_SOURCE_VERSION:=.*/PKG_SOURCE_VERSION:=${LATEST_COMMIT}/" \
+            ./dae/Makefile
+
+          grep -E '^PKG_(VERSION|SOURCE_VERSION):=' ./dae/Makefile
+
+      - name: Commit changes
         run: |
-          git config --global user.email simonsqiu@foxmail.com
-          git config --global user.name SimonsQiu
-          git add .
-          git commit -m "Update $(date +%Y/%m/%d\ %H:%M:%S\ %Z)" -a
-        continue-on-error: true
+          set -euo pipefail
+
+          git config user.name "SimonsQiu"
+          git config user.email "simonsqiu@foxmail.com"
+
+          git add dae/Makefile dae/files/dae.init
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+
+          git commit \
+            -m "Update dae to ${{ needs.check_update.outputs.latest_date }}"
 
       - name: Push changes
-        uses: ad-m/github-push-action@master
-        with:
-          github_token: ${{secrets.ACTIONS_DEPLOY_KEY}}
-          branch: kix
-        continue-on-error: true
-
-      - name: Cleanup Workflow Logs
-        uses: Mattraks/delete-workflow-runs@v2
-        with:
-          token: ${{secrets.ACTIONS_DEPLOY_KEY}}
-          repository: ${{ github.repository }}
-          retain_days: 1
-        continue-on-error: true
-
-      - name: Delete Older Releases
         env:
-          GH_TOKEN: ${{secrets.ACTIONS_DEPLOY_KEY}}
+          GH_TOKEN: ${{ secrets.ACTIONS_DEPLOY_KEY }}
         run: |
-          gh release list --limit 100 | tail -n +4 | awk '{print $1}' | xargs -I {} gh release delete {} --yes --cleanup-tag
+          set -euo pipefail
+
+          git remote set-url origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+          git push origin HEAD:kix
+
+      - name: Cleanup old workflow runs
+        env:
+          GH_TOKEN: ${{ secrets.ACTIONS_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+
+          gh run list \
+            --limit 100 \
+            --json databaseId,createdAt \
+            --jq '
+              sort_by(.createdAt)
+              | reverse
+              | .[3:]
+              | .[].databaseId
+            ' |
+          while read -r run_id; do
+            [ -z "$run_id" ] || gh run delete "$run_id"
+          done
         continue-on-error: true
 
-      - name: Cleanup Old Action Artifacts
+      - name: Cleanup old releases
         env:
-          GH_TOKEN: ${{secrets.ACTIONS_DEPLOY_KEY}}
+          GH_TOKEN: ${{ secrets.ACTIONS_DEPLOY_KEY }}
         run: |
-          gh run list --limit 100 --json databaseId --jq '.[3:].databaseId' | xargs -I {} gh run delete {}
+          set -euo pipefail
+
+          gh release list \
+            --limit 100 \
+            --json tagName,createdAt \
+            --jq '
+              sort_by(.createdAt)
+              | reverse
+              | .[3:]
+              | .[].tagName
+            ' |
+          while read -r tag; do
+            [ -z "$tag" ] || \
+              gh release delete "$tag" \
+                --yes \
+                --cleanup-tag
+          done
         continue-on-error: true
