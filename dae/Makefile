@@ -92,6 +92,8 @@ endef
 define Build/Compile
 	( \
 		pushd $(PKG_BUILD_DIR) ; \
+		go get -u=patch ; \
+		go mod tidy ; \
 		export \
 		$(GO_GENERAL_BUILD_CONFIG_VARS) \
 		$(GO_PKG_BUILD_CONFIG_VARS) \
