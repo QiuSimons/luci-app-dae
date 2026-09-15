@@ -96,7 +96,8 @@ start_service() {
     config_get config_file "config" "config_file" "/etc/dae/config.dae"
 
     set_chmod_640
-    "$PROG" validate -c "$config_file" || return 1
+    DAE_LOCATION_ASSET="/usr/share/v2ray" "$PROG" validate -c "$config_file" || return 1
+
     update_cron "add"
     hijack_resolv_conf
 	cleanup_netns
