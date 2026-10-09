@@ -3,7 +3,7 @@ name: Update Checker
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 */2 * * *"
+    - cron: "23 */6 * * *"
 
 concurrency:
   group: update-checker
