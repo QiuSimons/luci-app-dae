@@ -5,6 +5,9 @@ on:
   push:
     branches:
       - kix
+    paths:
+      - 'dae/**'
+      - 'luci-app-dae/**'
 
 
 permissions:
@@ -90,6 +93,8 @@ jobs:
           FEEDNAME: packages_ci
           PACKAGES: luci-app-dae
           NO_REFRESH_CHECK: true
+          UPSTREAM_URL: https://openwrt.fastly.net
+          FILE_HOST: https://openwrt.fastly.net
           V: s
 
       - name: Show built files
