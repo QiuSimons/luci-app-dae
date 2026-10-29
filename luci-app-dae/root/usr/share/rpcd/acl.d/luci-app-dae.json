@@ -3,29 +3,23 @@
 		"description": "Grant access for luci-app-dae",
 		"read": {
 			"ubus": {
-				"system": [ "board", "info" ],
-				"service": [ "list" ],
-				"rc": [ "list" ]
+				"luci.dae": [ "*" ]
 			},
 			"uci": [ "dae" ],
 			"file": [
 				"/etc/dae/config.dae",
-				"/etc/dae/config.d/dns.dae",
-				"/etc/dae/config.d/node.dae",
-				"/etc/dae/config.d/route.dae",
+				"/etc/dae/config.d/*",
 				"/var/log/dae/dae.log"
 			]
 		},
 		"write": {
 			"ubus": {
-				"rc": [ "init" ]
+				"luci.dae": [ "*" ]
 			},
 			"uci": [ "dae" ],
 			"file": [
 				"/etc/dae/config.dae",
-				"/etc/dae/config.d/dns.dae",
-				"/etc/dae/config.d/node.dae",
-				"/etc/dae/config.d/route.dae",
+				"/etc/dae/config.d/*",
 				"/var/log/dae/dae.log"
 			]
 		}

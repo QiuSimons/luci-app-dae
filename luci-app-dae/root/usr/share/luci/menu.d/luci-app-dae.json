@@ -1,0 +1,54 @@
+{
+	"admin/services/dae": {
+		"title": "DAE",
+		"order": -1,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": [ "luci-app-dae" ],
+			"uci": { "dae": true }
+		}
+	},
+	"admin/services/dae/global": {
+		"title": "Global Settings",
+		"order": 1,
+		"action": {
+			"type": "view",
+			"path": "dae/global"
+		}
+	},
+	"admin/services/dae/dns": {
+		"title": "DNS Settings",
+		"order": 2,
+		"action": {
+			"type": "view",
+			"path": "dae/dns"
+		}
+	},
+	"admin/services/dae/node": {
+		"title": "Node Settings",
+		"order": 3,
+		"action": {
+			"type": "view",
+			"path": "dae/node"
+		}
+	},
+	"admin/services/dae/route": {
+		"title": "Routing Settings",
+		"order": 4,
+		"action": {
+			"type": "view",
+			"path": "dae/route"
+		}
+	},
+	"admin/services/dae/log": {
+		"title": "Logs",
+		"order": 5,
+		"action": {
+			"type": "view",
+			"path": "dae/log"
+		}
+	}
+}
+

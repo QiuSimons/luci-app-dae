@@ -1,5 +1,5 @@
 msgid "DAE"
-msgstr ""
+msgstr "DAE"
 
 msgid "RUNNING"
 msgstr "运行中"
@@ -10,11 +10,26 @@ msgstr "未运行"
 msgid "Collecting data..."
 msgstr "收集数据..."
 
+msgid "Status"
+msgstr "状态"
+
+msgid "Running Status"
+msgstr "运行状态"
+
 msgid "Enabled"
 msgstr "启用"
 
 msgid "Reload Service"
 msgstr "重载服务"
+
+msgid "Reloading..."
+msgstr "正在重载..."
+
+msgid "DAE service reload triggered successfully."
+msgstr "DAE 服务重载已触发。"
+
+msgid "Failed to reload DAE:"
+msgstr "重载 DAE 失败："
 
 msgid "Reload service to apply configuration."
 msgstr "重载服务以使配置文件生效。"
@@ -64,11 +79,41 @@ msgstr "日志"
 msgid "Clear logs"
 msgstr "清空日志"
 
+msgid "Logs cleared successfully."
+msgstr "日志已清空。"
+
+msgid "Failed to clear logs:"
+msgstr "清空日志失败："
+
 msgid "Memory Usage"
 msgstr "内存占用"
 
 msgid "Service reloaded successfully"
 msgstr "服务重载成功"
+
+msgid "Configuration saved. DAE is disabled, so the service was not started."
+msgstr "配置已保存。DAE 未启用，因此服务未启动。"
+
+msgid "DAE did not come back up; check the logs"
+msgstr "DAE 未能正常启动，请查看日志"
+
+msgid "Configuration applied and service reloaded."
+msgstr "配置已生效并重载服务。"
+
+msgid "DNS configuration saved and service reloaded."
+msgstr "DNS 配置已保存并重载服务。"
+
+msgid "Node configuration saved and service reloaded."
+msgstr "节点配置已保存并重载服务。"
+
+msgid "Route configuration saved and service reloaded."
+msgstr "路由配置已保存并重载服务。"
+
+msgid "Failed to apply configuration:"
+msgstr "应用配置失败："
+
+msgid "Service did not accept the request"
+msgstr "服务未接受请求"
 
 msgid "Enable Auto Subscribe Update"
 msgstr "启用订阅自动更新"
@@ -79,5 +124,35 @@ msgstr "更新周期"
 msgid "Update Time (Every Day)"
 msgstr "更新时间（每天）"
 
+msgid "Every Day"
+msgstr "每天"
+
+msgid "Every Monday"
+msgstr "每周一"
+
+msgid "Every Tuesday"
+msgstr "每周二"
+
+msgid "Every Wednesday"
+msgstr "每周三"
+
+msgid "Every Thursday"
+msgstr "每周四"
+
+msgid "Every Friday"
+msgstr "每周五"
+
+msgid "Every Saturday"
+msgstr "每周六"
+
+msgid "Every Sunday"
+msgstr "每周日"
+
 msgid "Format Code"
 msgstr "格式化代码"
+
+msgid "Formatted"
+msgstr "已格式化"
+
+msgid "Failed to format code:"
+msgstr "格式化代码失败："
