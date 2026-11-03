@@ -153,27 +153,53 @@ function ensureEditorStyles() {
 		'.dae-status-field { display: inline-flex !important; align-items: center !important; justify-content: flex-start !important; gap: 16px !important; flex-wrap: wrap !important; min-height: 32px !important; }',
 		'.dae-editor-toolbar { margin-bottom: 6px !important; margin-top: 0 !important; display: flex !important; align-items: center !important; justify-content: flex-start !important; }',
 		'.cm-format-btn { margin: 0 !important; cursor: pointer !important; }',
-		'.cbi-value:has(.CodeMirror) { align-items: flex-start !important; }',
-		'.cbi-value:has(.CodeMirror) > .cbi-value-title { padding-top: 5px !important; flex-grow: 0 !important; }',
-		// 26rem basis: when the row is narrower, the editor wraps under its title instead of being squeezed beside it
-		'.cbi-value:has(.CodeMirror) .cbi-value-field { flex: 1 1 26rem !important; min-width: 0 !important; width: auto !important; }',
+		// The editor is the content of its row: label on top, editor across the
+		// full width, toolbar above it instead of beside it.
+		'.dae-code-row { display: block !important; }',
+		'.dae-code-row > .cbi-value-title { display: block !important; width: auto !important; flex: none !important; padding: 0 0 6px 0 !important; }',
+		'.dae-code-row > .cbi-value-field { display: block !important; width: auto !important; flex: none !important; }',
+		'.dae-editor { display: block !important; width: 100% !important; min-width: 0 !important; }',
+		'.dae-editor > .CodeMirror { width: 100% !important; }',
+		// Colours follow the theme through light-dark(), which resolves against the
+		// color-scheme every LuCI theme sets; without support the declarations are
+		// dropped and CodeMirror keeps its own light palette.
 		'.CodeMirror {',
-		'	border: 1px solid var(--border, var(--hairline, var(--border-color-medium, #ccc))) !important;',
+		'	border: 1px solid var(--border, #d5d9de) !important;',
+		'	border: 1px solid light-dark(var(--border, #d5d9de), #2a2f37) !important;',
 		'	border-radius: var(--radius-base, 4px);',
 		'	height: auto;',
 		'	min-height: 480px;',
 		'	font-family: var(--font-mono, monospace);',
 		'	font-size: 13px;',
-		'	background: var(--background, var(--control-bg, var(--background-color-high, #ffffff))) !important;',
-		'	color: var(--foreground, var(--text, var(--text-color-highest, inherit))) !important;',
+		'	background: var(--background, #ffffff) !important;',
+		'	background: light-dark(var(--background, #ffffff), #16181c) !important;',
+		'	color: light-dark(#1f2328, #e6e8ea) !important;',
 		'	box-shadow: none;',
 		'}',
 		'.CodeMirror-gutters {',
-		'	border-right: 1px solid var(--border, var(--hairline, var(--border-color-medium, #ccc))) !important;',
-		'	background: var(--surface-raised, var(--surface-sunken, var(--background-color-low, #f7f7f7))) !important;',
+		'	border-right: 1px solid light-dark(#e3e6ea, #262b33) !important;',
+		'	background: light-dark(var(--surface-raised, #f7f7f7), #111317) !important;',
 		'}',
-		'.CodeMirror-linenumber { color: var(--muted-foreground, var(--text-muted, var(--text-color-low, #888888))) !important; }',
-		'.CodeMirror-cursor { border-left: 1px solid var(--foreground, var(--text, currentColor)) !important; }'
+		'.CodeMirror-linenumber { color: light-dark(#8a919b, #6b7686) !important; }',
+		'.CodeMirror-cursor { border-left: 1px solid light-dark(#1f2328, #e6e8ea) !important; }',
+		'.CodeMirror-activeline-background { background: light-dark(#f3f6f9, #1b2027) !important; }',
+		'div.CodeMirror-selected { background: light-dark(#d9e2ec, #2b3440) !important; }',
+		'.CodeMirror-focused div.CodeMirror-selected { background: light-dark(#b9cfe7, #33414f) !important; }',
+		'.cm-s-default .cm-comment { color: light-dark(#a50, #7b8794) !important; }',
+		'.cm-s-default .cm-keyword { color: light-dark(#708, #c792ea) !important; }',
+		'.cm-s-default .cm-string { color: light-dark(#a11, #7ec699) !important; }',
+		'.cm-s-default .cm-number { color: light-dark(#164, #f78c6c) !important; }',
+		'.cm-s-default .cm-def { color: light-dark(#00f, #82aaff) !important; }',
+		'.cm-s-default .cm-variable { color: light-dark(#1f2328, #e6e8ea) !important; }',
+		'.cm-s-default .cm-variable-2 { color: light-dark(#05a, #82aaff) !important; }',
+		'.cm-s-default .cm-variable-3, .cm-s-default .cm-type { color: light-dark(#085, #7fdbca) !important; }',
+		'.cm-s-default .cm-operator { color: light-dark(#1f2328, #a8b3c2) !important; }',
+		'.cm-s-default .cm-bracket { color: light-dark(#997, #8b98a9) !important; }',
+		'.cm-s-default .cm-meta, .cm-s-default .cm-qualifier { color: light-dark(#555, #8b98a9) !important; }',
+		'.cm-s-default .cm-builtin { color: light-dark(#30a, #c792ea) !important; }',
+		'.cm-s-default .cm-tag { color: light-dark(#170, #7ec699) !important; }',
+		'.cm-s-default .cm-attribute { color: light-dark(#00c, #82aaff) !important; }',
+		'.CodeMirror-foldmarker { color: light-dark(#1f2328, #e6e8ea) !important; background: light-dark(#eef2f6, #262b33) !important; }'
 	].join('\n');
 	document.head.appendChild(style);
 }
@@ -421,10 +447,21 @@ function initCodeMirror(textarea, onSaveCallback) {
 
 		var toolbar = E('div', { 'class': 'dae-editor-toolbar' }, [ formatBtn ]);
 
+		// Toolbar and editor share one full width box: some themes lay the form
+		// field out as a flex row, which would otherwise squeeze the editor into
+		// the space left of the button instead of using the width of the row.
 		var wrapper = editor.getWrapperElement();
-		if (!wrapper.previousElementSibling || !wrapper.previousElementSibling.classList.contains('dae-editor-toolbar')) {
-			wrapper.parentNode.insertBefore(toolbar, wrapper);
-		}
+		var holder = E('div', { 'class': 'dae-editor' });
+
+		wrapper.parentNode.insertBefore(holder, wrapper);
+		holder.appendChild(toolbar);
+		holder.appendChild(wrapper);
+
+		var row = textarea.closest('.cbi-value');
+		if (row)
+			row.classList.add('dae-code-row');
+
+		editor.refresh();
 
 		if (window.IntersectionObserver) {
 			var observer = new IntersectionObserver(function(entries) {
