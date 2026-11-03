@@ -160,28 +160,32 @@ function ensureEditorStyles() {
 		'.dae-code-row > .cbi-value-field { display: block !important; width: auto !important; flex: none !important; }',
 		'.dae-editor { display: block !important; width: 100% !important; min-width: 0 !important; }',
 		'.dae-editor > .CodeMirror { width: 100% !important; }',
-		// Colours follow the theme through light-dark(), which resolves against the
-		// color-scheme every LuCI theme sets; without support the declarations are
-		// dropped and CodeMirror keeps its own light palette.
+		// Colours: a theme variable when the theme has one, otherwise a palette that
+		// follows the color-scheme every LuCI theme sets. Without light-dark()
+		// support the plain declarations above each line are used, and without
+		// either CodeMirror keeps its own light palette.
 		'.CodeMirror {',
 		'	border: 1px solid var(--border, #d5d9de) !important;',
-		'	border: 1px solid light-dark(var(--border, #d5d9de), #2a2f37) !important;',
+		'	border: 1px solid var(--border, light-dark(#d5d9de, #2a2f37)) !important;',
 		'	border-radius: var(--radius-base, 4px);',
 		'	height: auto;',
 		'	min-height: 480px;',
 		'	font-family: var(--font-mono, monospace);',
 		'	font-size: 13px;',
-		'	background: var(--background, #ffffff) !important;',
-		'	background: light-dark(var(--background, #ffffff), #16181c) !important;',
-		'	color: light-dark(#1f2328, #e6e8ea) !important;',
+		'	background: var(--background, var(--background-color-high, #ffffff)) !important;',
+		'	background: var(--background, var(--background-color-high, light-dark(#ffffff, #16181c))) !important;',
+		'	color: var(--foreground, var(--text, var(--text-color-highest, #1f2328))) !important;',
+		'	color: var(--foreground, var(--text, var(--text-color-highest, light-dark(#1f2328, #e6e8ea)))) !important;',
 		'	box-shadow: none;',
 		'}',
 		'.CodeMirror-gutters {',
-		'	border-right: 1px solid light-dark(#e3e6ea, #262b33) !important;',
-		'	background: light-dark(var(--surface-raised, #f7f7f7), #111317) !important;',
+		'	border-right: 1px solid var(--border, light-dark(#e3e6ea, #262b33)) !important;',
+		'	background: var(--surface-raised, var(--surface-sunken, var(--background-color-low, #f7f7f7))) !important;',
+		'	background: var(--surface-raised, var(--surface-sunken, var(--background-color-low, light-dark(#f7f7f7, #111317)))) !important;',
 		'}',
-		'.CodeMirror-linenumber { color: light-dark(#8a919b, #6b7686) !important; }',
-		'.CodeMirror-cursor { border-left: 1px solid light-dark(#1f2328, #e6e8ea) !important; }',
+		'.CodeMirror-linenumber { color: var(--muted-foreground, var(--text-muted, #8a919b)) !important; }',
+		'.CodeMirror-linenumber { color: var(--muted-foreground, var(--text-muted, light-dark(#8a919b, #6b7686))) !important; }',
+		'.CodeMirror-cursor { border-left: 1px solid var(--foreground, var(--text, light-dark(#1f2328, #e6e8ea))) !important; }',
 		'.CodeMirror-activeline-background { background: light-dark(#f3f6f9, #1b2027) !important; }',
 		'div.CodeMirror-selected { background: light-dark(#d9e2ec, #2b3440) !important; }',
 		'.CodeMirror-focused div.CodeMirror-selected { background: light-dark(#b9cfe7, #33414f) !important; }',
